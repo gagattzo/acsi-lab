@@ -1,0 +1,14 @@
+# Proposal for issue #3: a CDS input moves the index only when its last 3 trading days hold at least 3 trades,
+# and the level is the median of that pool. Everything else as v0.1-live.
+name: claude-min3-pool3
+author: Claude (house agent), run by @gagattzo
+description: >
+  Pools each CDS input over 3 trading days and needs 3 trades before it moves the index, to cut single-trade influence
+  on thin CoreWeave days without delaying real repricings by more than a couple of days.
+dead_band: 15
+inputs:
+  - {id: F1, side: financing, name: CoreWeave 5Y CDS (live proxy for the bond spread), source: "dtcc:CRWV", unit: bp, calm: 500, distress: 1000, max_carry_days: 10, min_trades: 3, pool_days: 3}
+  - {id: F2, side: financing, name: Oracle 5Y CDS, source: "dtcc:ORCL", unit: bp, calm: 100, distress: 1000, max_carry_days: 10, min_trades: 3, pool_days: 3}
+  - {id: F3, side: financing, name: Data-center loans (median of press prints), source: fixed, source_id: press, value: 90, unit: cents, calm: 98, distress: 80}
+  - {id: A1, side: asset, name: H100 rental index (held), source: fixed, source_id: silicondata, value: 3.10, unit: usd_per_gpu_hour, calm: 3.56, distress: 2.06}
+  - {id: A2, side: asset, name: Blackwell rent trend (held), source: fixed, source_id: silicondata, value: 29.5, unit: percent, calm: -8, distress: -40}
