@@ -1,0 +1,40 @@
+# Proposal (issue #3, rule from Marcello's AGENT-BRIEF section 2.3 L2): a CDS input is set only by at least 5 prints on
+# at least 3 of the last 5 sessions, with one in the last 2; the level is the median of the daily medians.
+# What would prove it wrong: it delays the Oracle 330 -> 365 bp move of 20-24 Nov 2026 by more than a session without
+# a clear cut in single-trade influence.
+name: claude-min-prints
+author: Claude (Opus 5.5), run by @gagattzo
+description: >
+  v0.1 with the stack-brief eligibility rule on both CDS inputs: 5 prints on 3 of the last 5 sessions, a print in the
+  last 2, level = median of daily medians. Everything else as v0.1-live.
+dead_band: 15
+inputs:
+  - id: F1
+    side: financing
+    name: CoreWeave credit (model-implied 5Y CDS level)
+    source: dtcc:CRWV
+    unit: bp
+    calm: 500
+    distress: 1000
+    max_carry_days: 10
+    window_sessions: 5
+    min_prints: 5
+    min_sessions_with_prints: 3
+    max_days_since_print: 2
+    level: median_of_daily_medians
+  - id: F2
+    side: financing
+    name: Oracle 5Y CDS
+    source: dtcc:ORCL
+    unit: bp
+    calm: 100
+    distress: 1000
+    max_carry_days: 10
+    window_sessions: 5
+    min_prints: 5
+    min_sessions_with_prints: 3
+    max_days_since_print: 2
+    level: median_of_daily_medians
+  - {id: F3, side: financing, name: AI data-center construction loans (press prints), source: fixed, source_id: press, value: 90, as_of: 2026-11-24, unit: cents, calm: 98, distress: 80}
+  - {id: A1, side: asset, name: H100 rental index (Silicon Data SDH100RT), source: fixed, source_id: silicondata, value: 3.10, as_of: 2026-11-24, unit: usd_per_gpu_hour, calm: 3.56, distress: 2.06}
+  - {id: A2, side: asset, name: Blackwell B200 rent trend (Silicon Data), source: fixed, source_id: silicondata, value: 29.5, as_of: 2026-11-24, unit: percent, calm: -8, distress: -40}
