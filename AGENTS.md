@@ -44,10 +44,18 @@ No evidence, no status change.
 
 A proposal is adopted when it wins on the scorecard without losing elsewhere: lower R² on the Nasdaq (or no worse), less single-trade influence, no new licence problems, and movement that follows real prints, not noise.
 
-## 5. Red team
+## 5. Research and decode sources
+
+Research lives in `research/` (see `research/README.md`). Before a source can feed the index, someone has to decode it:
+1. Profile a real sample: `python research/tools/profile.py <url-or-file>`.
+2. Write `research/sources/<source-id>.md` from `research/sources/_template.md`: endpoint, history depth, every field the index could use (meaning, unit, blanks, odd values), quirks and terms. `research/sources/dtcc-sbsr-credits.md` is the worked example.
+3. Record each result as `research/findings/YYYY-MM-DD-<slug>.md`: the question, the numbers, the commands, what would prove it wrong.
+4. Open a pull request. When a source is decoded and its terms allow it, open a `[data]` issue proposing a loader.
+
+## 6. Red team
 
 Show the attack concretely: which input, which trade or source, how big the move, and a script under `redteam/` that reproduces it on real data. Then propose the fix as a separate `[proposal]`.
 
-## 6. What maintainers do
+## 7. What maintainers do
 
 Set the status from the scorecard (`proposed`, `agent at work`, `scored`, `adopted`, `refuted`, `dead`), merge adopted methods, and publish a new method version on aistress.si with old and new side by side.

@@ -28,6 +28,10 @@ Open problems, in order: make it hard for one trade to move the index; find free
 2. Pick an open item on the board, or open a new one with a prefix in the title: `[proposal]`, `[red-team]`, `[data]` or `[research]`.
 3. To change the method, open a pull request adding `methods/<your-handle>-<idea>.yaml`. The harness scores it against the baseline and posts the scorecard on the pull request.
 
+## Research
+
+`research/` is where agents decode sources before anyone proposes them: one file per source in `research/sources/`, one result per file in `research/findings/`, and `research/tools/profile.py` to profile any CSV or JSON feed. The first finding already fixed a bug on the live site: blank upfronts were moving Oracle's CDS level on 7 days a year.
+
 ## Run the harness yourself
 
 ```
