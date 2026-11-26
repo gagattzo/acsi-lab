@@ -3,49 +3,92 @@
   "methods": [
     {
       "method": "v0.1-live",
+      "description": "ACSI v0.1 gap index, daily reprint. Only the two CDS inputs are re-priced each day. F1 is a model-implied CoreWeave level: no quoted 5-year spread exists, so it is computed from upfront payments (flat hazard, 40% recovery, 4.5% rate) and scored against bond-spread anchors. Loans (F3) and GPU rents (A1, A2) are held at the 24 Nov 2026 edition and count only from that date. Before it, the history is the financing side from F1 and F2 alone. This is not yet a live debt-versus-GPU measure.",
       "gap_now": 42.9,
+      "gap_date": "2026-11-25",
+      "financing_now": 58.3,
       "full": {
         "days": 262,
         "from": "2025-10-24",
         "to": "2026-11-25",
+        "changes": 260,
         "r2": 0.017,
-        "beta_per_1pct": -0.28,
-        "sd_daily": 2.93,
-        "share_moved_0_1": 0.74,
-        "max_one_trade": 5.41,
-        "p95_one_trade": 0.69,
-        "share_thin_days": 0.77
+        "beta_per_1pct": -0.41,
+        "r2_hy_oas": 0.038,
+        "r2_vix": 0.014,
+        "r2_joint": 0.038,
+        "sd_daily": 4.41,
+        "share_moved_0_1": 0.81,
+        "max_one_trade": 21.24,
+        "p95_one_trade": 6.84,
+        "share_thin_days": 0.77,
+        "share_single_trade_days": 0.32
       },
       "halves": [
         {
           "days": 131,
           "from": "2025-10-24",
           "to": "2026-05-19",
-          "r2": 0.032,
-          "beta_per_1pct": -0.43,
-          "sd_daily": 2.93,
-          "share_moved_0_1": 0.67,
-          "max_one_trade": 4.86,
-          "p95_one_trade": 0.58,
-          "share_thin_days": 0.82
+          "changes": 130,
+          "r2": 0.031,
+          "beta_per_1pct": -0.63,
+          "r2_hy_oas": 0.064,
+          "r2_vix": 0.041,
+          "r2_joint": 0.069,
+          "sd_daily": 4.39,
+          "share_moved_0_1": 0.76,
+          "max_one_trade": 18.47,
+          "p95_one_trade": 6.84,
+          "share_thin_days": 0.82,
+          "share_single_trade_days": 0.34
         },
         {
           "days": 131,
           "from": "2026-05-20",
           "to": "2026-11-25",
+          "changes": 129,
           "r2": 0.008,
-          "beta_per_1pct": -0.17,
-          "sd_daily": 2.94,
-          "share_moved_0_1": 0.82,
-          "max_one_trade": 5.41,
-          "p95_one_trade": 0.8,
-          "share_thin_days": 0.72
+          "beta_per_1pct": -0.25,
+          "r2_hy_oas": 0.017,
+          "r2_vix": 0.003,
+          "r2_joint": 0.02,
+          "sd_daily": 4.43,
+          "share_moved_0_1": 0.86,
+          "max_one_trade": 21.24,
+          "p95_one_trade": 7.01,
+          "share_thin_days": 0.72,
+          "share_single_trade_days": 0.31
         }
       ],
-      "forward": null,
+      "forward": {
+        "registered": "2026-11-26",
+        "days": 0,
+        "tests": null
+      },
       "freshness": {
         "F1": 0.63,
         "F2": 0.97
+      },
+      "carried": {
+        "F1": 0.35,
+        "F2": 0.03
+      },
+      "coverage": {
+        "days_gap": 2,
+        "days_financing_only": 260,
+        "held_from_edition": {
+          "F3": "2026-11-24",
+          "A1": "2026-11-24",
+          "A2": "2026-11-24"
+        },
+        "last_day": {
+          "F1": "carried",
+          "F2": "same_day",
+          "F3": "held_from_edition",
+          "A1": "held_from_edition",
+          "A2": "held_from_edition"
+        },
+        "last_basis": "gap"
       },
       "licence": [
         {
@@ -73,6 +116,11 @@
           "source": "silicondata",
           "redistributable": false
         }
+      ],
+      "held": [
+        "F3",
+        "A1",
+        "A2"
       ]
     }
   ]
