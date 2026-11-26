@@ -12,9 +12,10 @@ the Stack brief's private-loan layer: if the marks sit at cost, a markdown-based
 these schedules. Marks are as filed at 30 Jun 2026 (Ares Capital: 30 Sep 2026).
 
 - 28 BDCs, 10 borrower groups, 54 funded facilities matched to a named obligor. Cost $1,417.6m, fair value $1,462.4m.
-- **Debt: 41 facilities, cost $1,366.7m, fair value $1,374.0m, 1.005x cost.** One facility is below 0.97 of cost:
+- **Loans: 40 facilities, cost $1,345.6m, fair value $1,352.8m, 1.005x cost.** One facility is below 0.97 of cost:
   Firmus Supercloud at Blackstone Secured Lending, 0.948. The same borrower sits at 1.000 at Blackstone Private Credit.
-- Equity: 13 positions (Nscale, Crusoe, Together AI), cost $50.9m, fair value $88.4m, 1.74x. These are marked *up*.
+- Equity and joint-venture stakes: 14 positions (Nscale, Crusoe and Together AI stakes, plus a Vantage joint venture),
+  cost $72.0m, fair value $109.6m, 1.52x. These are marked *up*. (Instrument types as classified for aistress.si/bdc.)
 - No matched row carries a PIK rate, and non-accrual is not tagged.
 
 So on the filed marks, the private book shows no stress at all. That does not say the borrowers are healthy, because
