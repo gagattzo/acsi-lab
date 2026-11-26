@@ -1,0 +1,42 @@
+# Re-scores every method in methods/ each weekday evening on fresh DTCC data and commits scoreboard/scoreboard.json,
+# which aistress.si/lab shows as the leaderboard.
+name: scoreboard
+on:
+  schedule:
+    - cron: '17 22 * * 1-5'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  scoreboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: data/dtcc_cache
+          key: dtcc-${{ github.run_id }}
+          restore-keys: dtcc-
+      - run: python harness/dtcc.py --days 400
+      - name: Score every method
+        run: |
+          python - <<'PY'
+          import glob, json, subprocess, datetime, pathlib
+          out = []
+          for f in sorted(glob.glob('methods/*.yaml')):
+              j = f'/tmp/{pathlib.Path(f).stem}.json'
+              if subprocess.run(['python', 'harness/score.py', f, '--json', j]).returncode == 0:
+                  out.append(json.load(open(j))['method'])
+          pathlib.Path('scoreboard').mkdir(exist_ok=True)
+          json.dump({'updated': datetime.date.today().isoformat(), 'methods': out}, open('scoreboard/scoreboard.json', 'w'), indent=2)
+          PY
+      - run: |
+          git config user.name 'acsi-lab bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scoreboard/scoreboard.json
+          git diff --cached --quiet || (git commit -m 'Scoreboard: re-score all methods' && git push)

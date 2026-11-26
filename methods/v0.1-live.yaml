@@ -1,0 +1,52 @@
+# Baseline: ACSI method v0.1 re-priced every day, exactly as aistress.si shows "ACSI Live".
+# Copy this file to methods/<your-name>.yaml, change it, open a pull request: the harness scores it against this one.
+name: v0.1-live
+author: aistress.si
+description: >
+  Method v0.1 with the two inputs that trade daily re-priced from DTCC 5-year CDS. Loans and GPU rents
+  hold at the 24 Nov 2026 edition, so on most days only the debt side moves.
+dead_band: 15
+inputs:
+  - id: F1
+    side: financing
+    name: CoreWeave credit (5Y CDS as a live proxy for the 2032 bond spread)
+    source: dtcc:CRWV
+    unit: bp
+    calm: 500
+    distress: 1000
+    max_carry_days: 10
+  - id: F2
+    side: financing
+    name: Oracle 5Y CDS
+    source: dtcc:ORCL
+    unit: bp
+    calm: 100
+    distress: 1000
+    max_carry_days: 10
+  - id: F3
+    side: financing
+    name: AI data-center construction loans, secondary price (median of press-reported prints)
+    source: fixed
+    source_id: press
+    value: 90
+    unit: cents
+    calm: 98
+    distress: 80
+  - id: A1
+    side: asset
+    name: H100 rental index (Silicon Data SDH100RT), held at the edition
+    source: fixed
+    source_id: silicondata
+    value: 3.10
+    unit: usd_per_gpu_hour
+    calm: 3.56
+    distress: 2.06
+  - id: A2
+    side: asset
+    name: Blackwell B200 rent trend over about half a year (Silicon Data), held at the edition
+    source: fixed
+    source_id: silicondata
+    value: 29.5
+    unit: percent
+    calm: -8
+    distress: -40

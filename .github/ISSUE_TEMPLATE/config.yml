@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: The board
+    url: https://aistress.si/lab
+    about: Every open item by status, and the scoreboard

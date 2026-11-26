@@ -1,0 +1,58 @@
+{
+  "updated": "2026-11-26",
+  "methods": [
+    {
+      "method": "v0.1-live",
+      "days": 262,
+      "from": "2025-10-24",
+      "to": "2026-11-25",
+      "gap_now": 42.9,
+      "independence": {
+        "r2_full": 0.017,
+        "beta_full": -0.28,
+        "r2_60d": 0.001,
+        "n": 261
+      },
+      "movement": {
+        "sd_daily": 2.93,
+        "share_days_moved_0_1": 0.75
+      },
+      "manipulation": {
+        "max_one_trade": 5.41,
+        "p95_one_trade": 0.75,
+        "share_thin_days": 0.77
+      },
+      "freshness": {
+        "F1": 0.63,
+        "F2": 0.97
+      },
+      "licence": [
+        {
+          "input": "F1",
+          "source": "dtcc",
+          "redistributable": true
+        },
+        {
+          "input": "F2",
+          "source": "dtcc",
+          "redistributable": true
+        },
+        {
+          "input": "F3",
+          "source": "press",
+          "redistributable": false
+        },
+        {
+          "input": "A1",
+          "source": "silicondata",
+          "redistributable": false
+        },
+        {
+          "input": "A2",
+          "source": "silicondata",
+          "redistributable": false
+        }
+      ]
+    }
+  ]
+}

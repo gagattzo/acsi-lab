@@ -1,0 +1,84 @@
+# Every data source an ACSI method may use. A method that leans on a source we may not redistribute
+# is flagged by the harness. Add a source with a pull request: say what it is, how often it updates,
+# who publishes it and what its terms allow.
+sources:
+  - id: dtcc
+    name: DTCC public swap data (SEC Regulation SBSR dissemination)
+    url: https://pddata.dtcc.com/ppd/secdashboard
+    what: Every reported single-name CDS trade; end-of-day and intraday files, about a year of history
+    updates: several files a minute, end-of-day file daily
+    redistributable: true
+    terms: Public dissemination required by SEC rule, free of charge
+    grade: A
+  - id: fred
+    name: FRED (St. Louis Fed)
+    url: https://fred.stlouisfed.org
+    what: Treasury yields (DGS5, DGS7), Nasdaq Composite (NASDAQCOM) for the independence test
+    updates: daily
+    redistributable: false
+    terms: Some series carry third-party copyright (Nasdaq). Fetched at run time for statistics only, never stored here.
+    grade: A
+  - id: polymarket
+    name: Polymarket
+    url: https://gamma-api.polymarket.com
+    what: CoreWeave bankruptcy odds by deadline; compute (H100/B200) markets
+    updates: continuous
+    redistributable: true
+    terms: Public API
+    grade: B
+  - id: hyperliquid
+    name: Hyperliquid HIP-3 perps
+    url: https://api.hyperliquid.xyz/info
+    what: 24/7 equity perps on CoreWeave, Oracle, Nebius, IREN, Cipher, Nvidia
+    updates: continuous
+    redistributable: true
+    terms: Public API
+    grade: B
+  - id: pendle
+    name: Pendle (Arbitrum)
+    url: https://api-v2.pendle.finance
+    what: PT-sUSDai vs PT-USDai implied rates, an onchain GPU-loan premium
+    updates: continuous
+    redistributable: true
+    terms: Public API
+    grade: C
+  - id: gpu_marketplaces
+    name: Akash, RunPod, Vast.ai
+    url: https://console-api.akash.network/v1/gpu-prices
+    what: H100 asking prices; not transaction prices
+    updates: minutes
+    redistributable: true
+    terms: Public APIs (Vast.ai needs a key)
+    grade: C
+  - id: silicondata
+    name: Silicon Data GPU rental indices (SDH100RT, SDB200RT)
+    url: https://www.silicondata.com/products/silicon-index
+    what: Daily H100 and B200 rental indices
+    updates: daily by 21:00 UTC
+    redistributable: false
+    terms: Redistribution is licensed separately. Only single values published on their public pages are quoted, with attribution.
+    grade: B
+  - id: ornn
+    name: Ornn Compute Price Index (OCPI)
+    url: https://www.ornn.com
+    what: Transaction-based daily GPU rental indices
+    updates: daily
+    redistributable: false
+    terms: Licensed (Bloomberg, ICE). Cross-check only.
+    grade: B
+  - id: press
+    name: Press reports of bond and loan prints (Bloomberg, FT, Reuters)
+    url: ''
+    what: CoreWeave bond prices, secondary prices of data-center loans
+    updates: irregular
+    redistributable: false
+    terms: Facts are quoted with a link to the report; the articles are not reproduced.
+    grade: D
+  - id: edition
+    name: Published ACSI edition values
+    url: https://aistress.si
+    what: Values frozen in a weekly edition
+    updates: weekly
+    redistributable: true
+    terms: Our own publication
+    grade: B

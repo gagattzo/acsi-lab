@@ -1,0 +1,35 @@
+# ACSI method v0.1
+
+**Question:** is the stress in AI infrastructure in the debt that financed the build-out, or in what the GPUs earn?
+
+## Scoring
+
+Each input is scored against two anchors fixed in advance, a calm level and a distress level:
+
+    score = 100 × (x − calm) / (distress − calm), capped between 0 and 100
+
+- **Debt stress (F)** = mean of F1–F3. Needs at least two live inputs.
+- **GPU stress (A)** = mean of A1–A2. Needs A1.
+- **Gap = F − A.** Inside ±15 the two sides are aligned; +15 or more, the stress sits in the debt; −15 or less, in the GPUs.
+- Bands for each side: Calm below 25, Elevated 25–50, Stressed 50–75, Distressed 75+.
+
+## Inputs (edition of 24 Nov 2026)
+
+| Id | Input | Calm → distress | Weekly value | Daily in `v0.1-live` |
+| --- | --- | --- | --- | --- |
+| F1 | CoreWeave 9.625% 2032 notes, spread over Treasuries | 500 → 1,000 bp | +1,191 bp | CoreWeave 5Y CDS (DTCC) as a live proxy |
+| F2 | Oracle 5Y CDS | 100 → 1,000 bp | 365 bp | DTCC daily median |
+| F3 | AI data-center construction loans, secondary price, median | 98 → 80 cents | 90 | held |
+| A1 | H100 rental index (Silicon Data SDH100RT) | $3.56 → $2.06 | $3.10 | held |
+| A2 | Blackwell B200 rent, change over about half a year | −8% → −40% | +29.5% | held |
+
+Reading on 24 Nov 2026: debt 58.0, GPU 15.3, gap +42.6. ACSI Live on 25 Nov: +42.9.
+
+## Rules
+
+- An input past its window is dropped and the others re-averaged; nothing is filled in.
+- F3 is the median of loan prints within 56 days; press wording is taken at its bound ("below the mid-80s" = 85).
+- DTCC cleaning: see `harness/dtcc.py`. Same code as the live site.
+- Anchors are frozen for method v0.1. Any change is a new method version, published side by side with the old one.
+
+Full method document: [aistress.si/methodology-v0.1.pdf](https://aistress.si/methodology-v0.1.pdf).

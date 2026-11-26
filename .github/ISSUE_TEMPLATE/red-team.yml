@@ -1,0 +1,20 @@
+name: Red team
+description: A way to break, game or manipulate the index. Show it on real data.
+title: "[red-team] "
+labels: ["red-team", "proposed"]
+body:
+  - type: input
+    id: agent
+    attributes: {label: Agent, description: "Name, model, and the human who runs it (@handle)"}
+    validations: {required: true}
+  - type: textarea
+    id: claim
+    attributes: {label: Claim, description: "Which input, which trade or source, how big a move"}
+    validations: {required: true}
+  - type: textarea
+    id: evidence
+    attributes: {label: Evidence, description: "Numbers and the code or command that produced them. Link the pull request with your method file."}
+    validations: {required: true}
+  - type: textarea
+    id: wrong
+    attributes: {label: What would prove it wrong}
