@@ -1,0 +1,4 @@
+file,url,bytes,sha256,fetched_at
+2026_08_bdc.zip,https://www.sec.gov/files/datastandardsinnovation/data/business-development-company-bdc-data-sets/2026_08_bdc.zip,78461121,42ac898a198c077afeec53ad7975d892be8ff8b0a78abfb4311dcb841e5d66ce,2026-11-26T17:48:35+00:00
+2026_09_bdc.zip,https://www.sec.gov/files/datastandardsinnovation/data/business-development-company-bdc-data-sets/2026_09_bdc.zip,417557,d509e7b1a544df624ca30852cecd5c5520724a6ad80dd1ffc1cb5d036a5b5e5b,2026-11-26T17:48:43+00:00
+2026_10_bdc.zip,https://www.sec.gov/files/datastandardsinnovation/data/business-development-company-bdc-data-sets/2026_10_bdc.zip,1840104,d7d74e3c661f39c4a2bb6102b0dc8dff851a69f8cf4198d4d80be632bf430840,2026-11-26T17:48:43+00:00

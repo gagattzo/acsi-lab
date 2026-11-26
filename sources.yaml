@@ -10,6 +10,14 @@ sources:
     redistributable: true
     terms: Public dissemination required by SEC rule, free of charge
     grade: A
+  - id: sec_bdc
+    name: SEC BDC Data Sets (schedules of investments from 10-Q and 10-K filings)
+    url: https://www.sec.gov/data-research/sec-markets-data/bdc-data-sets
+    what: Every holding of every business development company, as tagged in its filing; cost, fair value, rate, maturity
+    updates: monthly file; marks are quarterly (10-Qs land in Feb, May, Aug, Nov)
+    redistributable: true
+    terms: U.S. government data, public; SEC fair-access rules apply to downloading (declare a User-Agent, stay under 10 requests a second)
+    grade: A
   - id: fred
     name: FRED (St. Louis Fed)
     url: https://fred.stlouisfed.org
