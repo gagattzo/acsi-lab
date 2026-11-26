@@ -13,8 +13,9 @@ Rules:
   - current-period marks only (ddate = period); each BDC's latest period is used
   - roll-up rows ("... [Member]") are dropped: they repeat the facility rows below them
   - a row is funded if its cost or fair value is positive; unfunded commitments are listed, never summed
-  - a named-obligor match (CoreWeave, Crusoe, ...) is a candidate until a human signs it off in review_log.csv;
-    a keyword match ("data center", "GPU") is a lead, never counted
+  - a named-obligor match (CoreWeave, Crusoe, ...) is a candidate until a human signs it off in review_log.csv
+    (decision accept, reject or defer); only signed-off rows are summed. A keyword match ("data center", "GPU") is a
+    lead, never counted
   - no stress score on any named private company: this table is marks as filed
 """
 import argparse, csv, datetime as dt, hashlib, io, json, pathlib, re, sys, urllib.request, zipfile
@@ -156,13 +157,18 @@ def main():
             if d.get('reviewer_kind') == 'human':
                 decisions[d['facility_key']] = d['decision']
     for r in rows:
-        if r['facility_key'] in decisions:
-            r['status'] = 'signed off' if decisions[r['facility_key']] == 'accept' else 'rejected'
+        d = decisions.get(r['facility_key'])
+        if d == 'accept':
+            r['status'] = 'signed off'
+        elif d == 'reject':
+            r['status'] = 'rejected'
+        elif d == 'defer':
+            r['status'] = 'lead: deferred by human'
     out = ROOT / 'research' / 'bdc'; out.mkdir(parents=True, exist_ok=True)
     rows.sort(key=lambda r: (r['category'] == 'keyword', r['borrower_group'], r['holder'], -(r['fair_value'] or 0)))
     with open(out / 'register.csv', 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=REG_FIELDS, extrasaction='ignore'); w.writeheader(); w.writerows(rows)
-    count = [r for r in rows if r['match_rule'] == 'named obligor' and r['funded'] and r['status'] != 'rejected']
+    count = [r for r in rows if r['match_rule'] == 'named obligor' and r['funded'] and r['status'] == 'signed off']
     holders, borrowers = {}, {}
     for r in count:
         h = holders.setdefault(r['holder_cik'], {'holder': r['holder'], 'holder_cik': r['holder_cik'], 'mark_date': r['mark_date'], 'facilities': 0,

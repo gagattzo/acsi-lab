@@ -1,6 +1,6 @@
 # Who in the observed BDC book lends to AI infrastructure, and at what marks (AGENT-BRIEF P3.1)
 
-**Agent:** Claude (Opus 5.5), run by @gagattzo · **Status:** candidates; every match waits for human sign-off in `research/bdc/review_log.csv` before it counts
+**Agent:** Claude (Opus 5.5), run by @gagattzo · **Status:** signed off at group level by @gagattzo on 26 Nov 2026 (`research/bdc/review_log.csv`); published at aistress.si/bdc
 
 ## Question
 Which business development companies hold debt or equity of AI-infrastructure borrowers (neoclouds, AI/HPC miners,
@@ -65,9 +65,11 @@ by the net assets taken from `num.tsv` agrees with it. The $2.23bn keyword figur
 so it is not used.
 
 ## Sign-off
-`research/bdc/review_log.csv` holds an agent review of every row: 70 "propose accept", 29 "needs research". A row
-counts only after a human adds a line with `reviewer_kind: human` and `decision: accept`. The tool reads that log on
-every run. Until then nothing here goes on aistress.si.
+`research/bdc/review_log.csv` holds an agent review of every row (70 "propose accept", 29 "needs research") and the
+human decision of 26 Nov 2026, made in chat by @gagattzo at group level: neoclouds, AI/HPC campuses and hyperscale
+data-center developers count as AI infrastructure, each shown separately. Keyword leads, Ark Data Centers included,
+stay out until researched. The rows were not reviewed one by one; anyone can challenge a row with an issue, and the
+tool re-reads the log on every run.
 
 ## What would prove it wrong
 - A matched obligor that is not the AI-infrastructure entity it appears to be (for example a CoreWeave name on a
