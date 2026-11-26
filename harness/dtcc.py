@@ -1,23 +1,27 @@
-"""Daily 5-year CDS levels from DTCC's free public swap data (SEC Regulation SBSR dissemination).
+"""DTCC public swap data (SEC Regulation SBSR) -> canonical CDS tables.
 
-Same cleaning rules as aistress.si/api/cds:
-  - CDS rows only (no loans, total return swaps or delayed-draw loans); a standard coupon or a quoted spread
-  - cancelled trades (EROR) removed, corrections (CORR) applied, only trades executed on the file date
+Raw:       data/raw/dtcc/YYYY-MM-DD.zip          one end-of-day credit file per weekday, as published
+Manifest:  manifests/dtcc_sha256.csv              sha256 of every raw file (committed: a changed file fails the run)
+Canonical: data/canonical/cds_trades.csv          one row per priced trade (schema/cds_trades.yaml)
+           data/canonical/cds_daily.csv           one row per entity-day (schema/cds_daily.yaml)
+
+Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.py):
+  - CDS rows only: no loans (LX ids), total return swaps or delayed-draw loans; needs a coupon or a quoted spread
+  - cancelled trades (EROR) removed, corrections (CORR) replace the record they correct, same-day executions only
   - on-the-run 5-year maturity only
-  - quoted spreads used as reported when 10-5,000 bp
-  - upfront-only trades converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate);
-    DTCC upfronts are unsigned, so the reading closer to the day's quoted median (or the previous level) wins
-  - daily level = median of the day's spreads
+  - quoted spreads used as reported when 10-5,000 bp; 0 or blank means "not quoted"
+  - a blank upfront is missing, not zero
+  - upfront-only trades converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate); DTCC upfronts are
+    unsigned, so the feasible reading (10 bp or more) closer to the day's quoted median (or the previous level) wins
+  - daily level = median of the day's priced trades
 
-It also records, for each day, how far the level moves if the single most influential trade is removed
-(leave-one-out). That is the manipulation test: what one trade can do to the index.
-
-Usage: python harness/dtcc.py --days 400 --out data/cds_daily.csv
+Usage: python harness/dtcc.py [--days 400] [--offline]
 """
-import argparse, concurrent.futures as cf, csv, datetime as dt, io, json, math, os, pathlib, statistics, sys, urllib.request, zipfile
+import argparse, concurrent.futures as cf, csv, datetime as dt, hashlib, io, math, pathlib, statistics, sys, urllib.request, zipfile
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 URL = 'https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_{}.zip'
-UA = 'acsi-lab/0.1 (+https://github.com/gagattzo/acsi-lab)'
+UA = 'Mozilla/5.0 (compatible; acsi-lab/0.2; +https://aistress.si/lab)'
 ENTITIES = {  # id: (name match, RED code)
     'ORCL': ('ORACLE', '6EC42L'),
     'CRWV': ('COREWEAVE', '239FAV'),
@@ -25,18 +29,24 @@ ENTITIES = {  # id: (name match, RED code)
 }
 DAY = 86400.0
 RATE, RECOVERY = 0.045, 0.40
+TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread_bp', 'coupon', 'upfront_pct', 'notional_capped']
+DAILY_FIELDS = ['date', 'entity', 'bp', 'trades', 'quoted', 'loo_bp', 'last_trade']
 
 
 def fnum(v):
-    try:
-        x = float(str(v).replace(',', '').replace('+', ''))
-        return x if math.isfinite(x) else None
-    except (TypeError, ValueError):
+    """Number or None. Blank strings are None, never 0."""
+    s = str(v if v is not None else '').strip().replace(',', '').replace('+', '')
+    if not s:
         return None
+    try:
+        x = float(s)
+    except ValueError:
+        return None
+    return x if math.isfinite(x) else None
 
 
 def ts(s):
-    s = str(s).strip()
+    s = str(s or '').strip()
     if not s:
         return None
     try:
@@ -100,7 +110,7 @@ def spread_from_upfront(upfront, C, T, accr):
 def is_cds(r):
     uid = str(r.get('Underlier ID-Leg 1', ''))
     nm = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', ''))).upper()
-    if uid.upper().startswith('LX') or ' TRS' in ' ' + nm + ' ' or 'DDTL' in nm:
+    if uid.upper().startswith('LX') or ' TRS ' in ' ' + nm + ' ' or 'DDTL' in nm:
         return False
     return (fnum(r.get('Fixed rate-Leg 1')) or 0) > 0 or (fnum(r.get('Spread-Leg 1')) or 0) > 0
 
@@ -121,11 +131,12 @@ def clean(rows, day):
     return [r for r in keep.values() if str(r.get('Execution Timestamp', ''))[:10] == day]
 
 
-def levels_for_day(rows, day, prev):
+def parse_day(rows, day, prev):
+    """Returns (levels, trades): levels[entity] = daily row; trades = list of canonical trade rows."""
     rows = clean(rows, day)
-    out = {}
+    levels, trades = {}, []
     for eid, (match, red) in ENTITIES.items():
-        quoted, ups, last = [], [], None
+        quoted, ups = [], []
         for r in rows:
             text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' + str(r.get('Underlier ID-Leg 1', ''))).upper()
             if not ((match in text or red in text) and is_cds(r)):
@@ -138,51 +149,41 @@ def levels_for_day(rows, day, prev):
             T = (exp - step) / (365.25 * DAY)
             accr = (step - last_imm(ex)) / (360 * DAY)
             N = fnum(r.get('Notional amount-Leg 1'))
-            amt = fnum(r.get('Other payment amount'))  # blank stays None: no upfront, no reading
+            amt = fnum(r.get('Other payment amount'))
             pct = amt / N if (N and N > 0 and amt is not None) else None
+            meta = {'dissemination_id': r.get('Dissemination Identifier', ''), 'exec_ts': r.get('Execution Timestamp', ''),
+                    'coupon': C or None, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
             q = fnum(r.get('Spread-Leg 1'))
             if q:
                 if 0.001 <= q < 0.5:
-                    quoted.append(q)
-                    last = max(last or ex, ex)
+                    quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(pct * 100, 4))))
             elif pct is not None and C:
-                ups.append((spread_from_upfront(abs(pct), C, T, accr), spread_from_upfront(-abs(pct), C, T, accr), abs(pct)))
-                last = max(last or ex, ex)
-        ref = statistics.median(quoted) if quoted else (prev[eid] / 10000 if prev.get(eid) else None)
-        vals = list(quoted)
-        for hi, lo, p in ups:
+                ups.append((spread_from_upfront(abs(pct), C, T, accr), spread_from_upfront(-abs(pct), C, T, accr), abs(pct), ex,
+                            dict(meta, kind='upfront', upfront_pct=round(abs(pct) * 100, 4))))
+        ref = statistics.median([x[0] for x in quoted]) if quoted else (prev[eid] / 10000 if prev.get(eid) else None)
+        priced = list(quoted)
+        ok = lambda x: 0.001 <= x < 1  # a reading at the solver's floor (under 10 bp) is the impossible sign, not a price
+        for hi, lo, p, ex, meta in ups:
             s = None
-            if ref is not None:
-                s = hi if abs(hi - ref) <= abs(lo - ref) else lo
-            elif p >= 0.02:
+            feasible = [x for x in (hi, lo) if ok(x)]
+            if ref is not None and feasible:
+                s = min(feasible, key=lambda x: abs(x - ref))
+            elif ref is None and p >= 0.02 and ok(hi):
                 s = hi
-            if s is not None and 0 < s < 1:
-                vals.append(s)
-        if not vals:
+            if s is not None:
+                priced.append((s, ex, meta))
+        if not priced:
             continue
+        vals = [x[0] for x in priced]
         med = statistics.median(vals)
-        loo = max((abs(statistics.median(vals[:i] + vals[i + 1:]) - med) for i in range(len(vals))), default=None) if len(vals) > 1 else None
-        out[eid] = {'bp': round(med * 10000, 1), 'trades': len(vals), 'quoted': len(quoted),
-                    'loo_bp': None if loo is None else round(loo * 10000, 1),
-                    'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat() if last else None}
-    return out
-
-
-def fetch(day, cache):
-    p = cache / f'{day}.zip'
-    if p.exists():
-        return p.read_bytes() or None
-    req = urllib.request.Request(URL.format(day.replace('-', '_')), headers={'User-Agent': UA})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            b = r.read()
-    except Exception:
-        b = b''
-    if b[:2] != b'PK':
-        b = b''
-    if day < dt.date.today().isoformat():
-        p.write_bytes(b)  # cache misses too, for past days
-    return b or None
+        loo = max(abs(statistics.median(vals[:i] + vals[i + 1:]) - med) for i in range(len(vals))) if len(vals) > 1 else None
+        last = max(x[1] for x in priced)
+        levels[eid] = {'date': day, 'entity': eid, 'bp': round(med * 10000, 1), 'trades': len(vals), 'quoted': len(quoted),
+                       'loo_bp': None if loo is None else round(loo * 10000, 1),
+                       'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat()}
+        for s, ex, meta in priced:
+            trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
+    return levels, trades
 
 
 def rows_of(b):
@@ -190,33 +191,78 @@ def rows_of(b):
     return list(csv.DictReader(io.StringIO(z.read(z.namelist()[0]).decode('utf-8', 'replace'))))
 
 
+def fetch(day, raw, offline):
+    p = raw / f'{day}.zip'
+    if p.exists():
+        return p.read_bytes() or None
+    if offline:
+        return None
+    req = urllib.request.Request(URL.format(day.replace('-', '_')), headers={'User-Agent': UA, 'Accept': '*/*'})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            b = r.read()
+    except Exception:
+        b = b''
+    if b[:2] != b'PK':
+        b = b''
+    if b or day < (dt.date.today() - dt.timedelta(days=3)).isoformat():
+        p.write_bytes(b)  # remember old misses (holidays) so they are not re-fetched every run
+    return b or None
+
+
+def load_manifest(path):
+    if not path.exists():
+        return {}
+    return {r['date']: r for r in csv.DictReader(open(path))}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--days', type=int, default=400)
-    ap.add_argument('--out', default='data/cds_daily.csv')
-    ap.add_argument('--cache', default='data/dtcc_cache')
+    ap.add_argument('--offline', action='store_true', help='use cached raw files only')
     a = ap.parse_args()
-    cache = pathlib.Path(a.cache); cache.mkdir(parents=True, exist_ok=True)
+    raw = ROOT / 'data' / 'raw' / 'dtcc'; raw.mkdir(parents=True, exist_ok=True)
+    canon = ROOT / 'data' / 'canonical'; canon.mkdir(parents=True, exist_ok=True)
+    man_path = ROOT / 'manifests' / 'dtcc_sha256.csv'; man_path.parent.mkdir(exist_ok=True)
     today = dt.date.today()
-    days = [(today - dt.timedelta(days=k)).isoformat() for k in range(1, a.days + 1)]
-    days = sorted(d for d in days if dt.date.fromisoformat(d).weekday() < 5)
+    days = sorted(d for d in ((today - dt.timedelta(days=k)).isoformat() for k in range(1, a.days + 1)) if dt.date.fromisoformat(d).weekday() < 5)
     with cf.ThreadPoolExecutor(12) as ex:
-        blobs = dict(zip(days, ex.map(lambda d: fetch(d, cache), days)))
-    prev, out_rows = {}, []
+        blobs = dict(zip(days, ex.map(lambda d: fetch(d, raw, a.offline), days)))
+
+    # Provenance: every raw file must match the committed manifest; new days are appended.
+    manifest = load_manifest(man_path)
+    bad = []
     for d in days:
         b = blobs[d]
         if not b:
             continue
-        lv = levels_for_day(rows_of(b), d, prev)
+        h = hashlib.sha256(b).hexdigest()
+        if d in manifest and manifest[d]['sha256'] != h:
+            bad.append(d)
+        elif d not in manifest:
+            manifest[d] = {'date': d, 'url': URL.format(d.replace('-', '_')), 'bytes': len(b), 'sha256': h}
+    if bad:
+        sys.exit(f'raw files differ from manifests/dtcc_sha256.csv on {", ".join(bad)}: DTCC republished them or someone '
+                 'tampered with the data. Investigate before scoring.')
+    with open(man_path, 'w', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=['date', 'url', 'bytes', 'sha256']); w.writeheader()
+        for d in sorted(manifest):
+            w.writerow(manifest[d])
+
+    prev, daily, trades = {}, [], []
+    for d in days:
+        if not blobs[d]:
+            continue
+        lv, tr = parse_day(rows_of(blobs[d]), d, prev)
         for eid, v in lv.items():
             prev[eid] = v['bp']
-            out_rows.append({'date': d, 'entity': eid, **{k: v[k] for k in ('bp', 'trades', 'quoted', 'loo_bp', 'last_trade')}})
-    pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    with open(a.out, 'w', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=['date', 'entity', 'bp', 'trades', 'quoted', 'loo_bp', 'last_trade'])
-        w.writeheader(); w.writerows(out_rows)
-    n_files = sum(1 for d in days if blobs[d])
-    print(f'{n_files} daily files, {len(out_rows)} entity-days -> {a.out}', file=sys.stderr)
+            daily.append(v)
+        trades.extend(tr)
+    for name, fields, rows in (('cds_daily.csv', DAILY_FIELDS, daily), ('cds_trades.csv', TRADE_FIELDS, trades)):
+        with open(canon / name, 'w', newline='') as f:
+            w = csv.DictWriter(f, fieldnames=fields); w.writeheader(); w.writerows(rows)
+    print(f'{sum(1 for d in days if blobs[d])} raw files (hashes checked), {len(daily)} entity-days, {len(trades)} priced trades '
+          f'-> data/canonical/', file=sys.stderr)
 
 
 if __name__ == '__main__':

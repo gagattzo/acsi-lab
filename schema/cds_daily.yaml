@@ -1,0 +1,13 @@
+table: cds_daily
+file: data/canonical/cds_daily.csv
+grain: one entity per trading day with at least one priced trade
+built_by: harness/dtcc.py
+key: [date, entity]
+columns:
+  - {name: date, type: date}
+  - {name: entity, type: enum, values: [ORCL, CRWV, META]}
+  - {name: bp, type: float, min: 10, max: 10000, unit: bp, description: Median par spread of the day's priced trades}
+  - {name: trades, type: int, min: 1, description: Priced trades that day}
+  - {name: quoted, type: int, min: 0, description: Of which reported with a quoted spread}
+  - {name: loo_bp, type: float, nullable: true, min: 0, unit: bp, description: "Largest move in the median from removing one trade (blank with one trade)"}
+  - {name: last_trade, type: datetime}

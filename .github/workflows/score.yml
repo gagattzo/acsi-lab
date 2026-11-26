@@ -34,17 +34,20 @@ jobs:
           ls proposed
       - uses: actions/cache@v4
         with:
-          path: data/dtcc_cache
-          key: dtcc-${{ github.run_id }}
-          restore-keys: dtcc-
+          path: data/raw/dtcc
+          key: dtcc-raw-${{ github.run_id }}
+          restore-keys: dtcc-raw-
       - run: python harness/dtcc.py --days 400
       - name: Score
+        env:
+          REG: ${{ github.event.pull_request.created_at }}
         run: |
+          REG=${REG:0:10}
           : > scorecard.md
           for f in proposed/*.yaml; do
             [ -e "$f" ] || continue
-            if python harness/score.py "$f" --baseline methods/v0.1-live.yaml --md "$f.md"; then cat "$f.md" >> scorecard.md
-            else echo "Could not score \`$(basename "$f")\`: check that every source is one the harness knows (see sources.yaml)." >> scorecard.md; fi
+            if python harness/score.py "$f" --baseline methods/v0.1-live.yaml --registered "$REG" --md "$f.md"; then cat "$f.md" >> scorecard.md
+            else echo "Could not score \`$(basename "$f")\`: the method uses something the pipeline does not define (see schema/method.yaml)." >> scorecard.md; fi
             echo >> scorecard.md
           done
           [ -s scorecard.md ] || echo "No method files changed." > scorecard.md

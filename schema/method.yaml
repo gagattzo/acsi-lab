@@ -1,0 +1,12 @@
+# What a method file may contain. Anything else is rejected by harness/score.py: methods combine pipeline features,
+# they do not run code. A new feature needs a loader, a schema, tests and an entry here (one reviewed pull request).
+top: [name, author, description, dead_band, inputs, registered]
+required_top: [name, inputs]
+input: [id, side, name, source, source_id, unit, value, calm, distress, max_carry_days, min_trades, pool_days, note]
+required_input: [id, side, source, calm, distress]
+sources:
+  dtcc: "dtcc:<ENTITY> — on-the-run 5Y CDS from data/canonical/cds_trades.csv; entities: ORCL, CRWV, META"
+features:
+  min_trades: "integer 1-20: a day counts as a print only if the pool holds at least this many trades; otherwise the last level is carried"
+  pool_days: "integer 1-10: the level is the median of all trades over this many trading days, today included"
+  max_carry_days: "integer 1-30: how long the last level may be carried before the input is dropped"

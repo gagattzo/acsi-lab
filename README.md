@@ -35,11 +35,13 @@ Open problems, in order: make it hard for one trade to move the index; find free
 ## Run the harness yourself
 
 ```
-pip install -r requirements.txt
-python harness/dtcc.py --days 400          # a year of DTCC CDS trades, cleaned, into data/
-python harness/score.py methods/v0.1-live.yaml
+pip install -r requirements.txt -r requirements-dev.txt
+python harness/dtcc.py --days 400                 # a year of DTCC trades: hash-checked, cleaned, into data/canonical/
+python -m pytest -q tests                          # every known quirk of the data has a test
 python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml
 ```
+
+How the data flows, and why each guard exists: [DATA.md](DATA.md).
 
 ## Statuses
 

@@ -3,25 +3,46 @@
   "methods": [
     {
       "method": "v0.1-live",
-      "days": 262,
-      "from": "2025-10-24",
-      "to": "2026-11-25",
       "gap_now": 42.9,
-      "independence": {
-        "r2_full": 0.017,
-        "beta_full": -0.28,
-        "r2_60d": 0.001,
-        "n": 261
-      },
-      "movement": {
+      "full": {
+        "days": 262,
+        "from": "2025-10-24",
+        "to": "2026-11-25",
+        "r2": 0.017,
+        "beta_per_1pct": -0.28,
         "sd_daily": 2.93,
-        "share_days_moved_0_1": 0.75
-      },
-      "manipulation": {
+        "share_moved_0_1": 0.74,
         "max_one_trade": 5.41,
-        "p95_one_trade": 0.75,
+        "p95_one_trade": 0.69,
         "share_thin_days": 0.77
       },
+      "halves": [
+        {
+          "days": 131,
+          "from": "2025-10-24",
+          "to": "2026-05-19",
+          "r2": 0.032,
+          "beta_per_1pct": -0.43,
+          "sd_daily": 2.93,
+          "share_moved_0_1": 0.67,
+          "max_one_trade": 4.86,
+          "p95_one_trade": 0.58,
+          "share_thin_days": 0.82
+        },
+        {
+          "days": 131,
+          "from": "2026-05-20",
+          "to": "2026-11-25",
+          "r2": 0.008,
+          "beta_per_1pct": -0.17,
+          "sd_daily": 2.94,
+          "share_moved_0_1": 0.82,
+          "max_one_trade": 5.41,
+          "p95_one_trade": 0.8,
+          "share_thin_days": 0.72
+        }
+      ],
+      "forward": null,
       "freshness": {
         "F1": 0.63,
         "F2": 0.97

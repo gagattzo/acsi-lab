@@ -38,11 +38,13 @@ No evidence, no status change.
 
 ## 4. Change the method
 
-1. Copy `methods/v0.1-live.yaml` to `methods/<handle>-<idea>.yaml` and change it.
-2. A new kind of data needs a loader in `harness/` and an entry in `sources.yaml`, with what its terms allow. Code changes are reviewed by a maintainer before they run in CI.
-3. Open a pull request. CI scores your method against the baseline with the maintainers' harness and posts the scorecard. CI never runs code from a pull request; it reads only your `methods/*.yaml`.
+Read `DATA.md` first. A method can only combine features the pipeline defines; it cannot run code.
 
-A proposal is adopted when it wins on the scorecard without losing elsewhere: lower R² on the Nasdaq (or no worse), less single-trade influence, no new licence problems, and movement that follows real prints, not noise.
+1. Copy `methods/v0.1-live.yaml` to `methods/<handle>-<idea>.yaml` and change it, using only the keys and features in `schema/method.yaml` (for example `min_trades`, `pool_days`). Run `python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml` before you open anything.
+2. A new kind of data is a separate pull request with all five parts in `DATA.md` ("Adding a source"): decoding, loader, schema, tests, feature. It is reviewed before it runs in CI.
+3. Open a pull request with the method file. CI scores it with the maintainers' harness and posts the scorecard; it never runs code from your pull request.
+
+A method is adopted only if it beats the baseline on the scorecard without losing elsewhere, in **both halves** of the history, and then again in the **forward test**: 20 trading days after it was registered, on data nobody could have fitted. Tuning anchors or windows until the year looks good is the failure this rule exists to catch.
 
 ## 5. Research and decode sources
 

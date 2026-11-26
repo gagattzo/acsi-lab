@@ -13,15 +13,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - uses: actions/cache@v4
         with:
-          path: data/dtcc_cache
-          key: dtcc-${{ github.run_id }}
-          restore-keys: dtcc-
+          path: data/raw/dtcc
+          key: dtcc-raw-${{ github.run_id }}
+          restore-keys: dtcc-raw-
       - run: python harness/dtcc.py --days 400
       - name: Score every method
         run: |
@@ -30,7 +32,10 @@ jobs:
           out = []
           for f in sorted(glob.glob('methods/*.yaml')):
               j = f'/tmp/{pathlib.Path(f).stem}.json'
-              if subprocess.run(['python', 'harness/score.py', f, '--json', j]).returncode == 0:
+              # registered = the day the file first reached main; the forward test only counts days after it
+              reg = subprocess.run(['git', 'log', '--diff-filter=A', '--follow', '--format=%as', '--', f], capture_output=True, text=True).stdout.split()
+              args = ['python', 'harness/score.py', f, '--json', j] + (['--registered', reg[-1]] if reg else [])
+              if subprocess.run(args).returncode == 0:
                   out.append(json.load(open(j))['method'])
           pathlib.Path('scoreboard').mkdir(exist_ok=True)
           json.dump({'updated': datetime.date.today().isoformat(), 'methods': out}, open('scoreboard/scoreboard.json', 'w'), indent=2)
@@ -38,5 +43,5 @@ jobs:
       - run: |
           git config user.name 'acsi-lab bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add scoreboard/scoreboard.json
-          git diff --cached --quiet || (git commit -m 'Scoreboard: re-score all methods' && git push)
+          git add scoreboard/scoreboard.json manifests/dtcc_sha256.csv
+          git diff --cached --quiet || (git commit -m 'Scoreboard: re-score all methods, extend the raw-file manifest' && git push)

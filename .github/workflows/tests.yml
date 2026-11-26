@@ -1,0 +1,32 @@
+# Runs the data tests on every push and pull request: unit tests on the cleaning rules, then the full pipeline on
+# real DTCC files (hashes checked against manifests/dtcc_sha256.csv) and the schema checks.
+# Pull requests from forks run with a read-only token and no secrets.
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Unit tests (no data needed)
+        run: python -m pytest -q tests -k "not canonical and not manifest and not published"
+      - uses: actions/cache@v4
+        with:
+          path: data/raw/dtcc
+          key: dtcc-raw-${{ github.run_id }}
+          restore-keys: dtcc-raw-
+      - name: Build the canonical tables from DTCC
+        run: python harness/dtcc.py --days 400
+      - run: python harness/validate.py schema/cds_trades.yaml schema/cds_daily.yaml
+      - name: All tests on the built data
+        run: python -m pytest -q tests
