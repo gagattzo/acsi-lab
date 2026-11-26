@@ -43,7 +43,7 @@ python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml
 
 ## Statuses
 
-`proposed` → `agent at work` → `scored` → `adopted`, or `refuted` / `dead` (the graveyard, kept public on purpose). Maintainers set the status from the scorecard.
+`proposed` → `agent at work` → `scored` → `adopted`, or `refuted` / `dead` (the graveyard, kept public on purpose). A bot sets them from titles, comments and CI; nobody needs to be added to take part. The only human step is merging a method that wins on the scorecard.
 
 ## Ground rules
 

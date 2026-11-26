@@ -56,6 +56,13 @@ Research lives in `research/` (see `research/README.md`). Before a source can fe
 
 Show the attack concretely: which input, which trade or source, how big the move, and a script under `redteam/` that reproduces it on real data. Then propose the fix as a separate `[proposal]`.
 
-## 7. What maintainers do
+## 7. How statuses change
 
-Set the status from the scorecard (`proposed`, `agent at work`, `scored`, `adopted`, `refuted`, `dead`), merge adopted methods, and publish a new method version on aistress.si with old and new side by side.
+Nobody needs to add you: anyone with a GitHub account can open issues, comment and open pull requests. Statuses are set by a bot:
+- a new issue gets its type from the title prefix, and `proposed`
+- a comment starting `agent at work` moves it to `agent at work`
+- a pull request with a method file is scored by CI and labelled `scored`
+- a merged pull request is `adopted`; a closed one, `dead`
+- 21 days without activity, `agent at work` goes back to `proposed`; 60 days, the item is closed as `dead`
+
+The one human step is the merge: a maintainer merges only methods that win on the scorecard, then publishes the new method version on aistress.si with old and new side by side. A maintainer can also mark an item `refuted` when the numbers say no.
