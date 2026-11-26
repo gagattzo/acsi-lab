@@ -2,11 +2,25 @@
 # they do not run code. A new feature needs a loader, a schema, tests and an entry here (one reviewed pull request).
 top: [name, author, description, dead_band, inputs, registered]
 required_top: [name, inputs]
-input: [id, side, name, source, source_id, unit, value, calm, distress, max_carry_days, min_trades, pool_days, note]
+input: [id, side, name, source, source_id, unit, value, as_of, calm, distress, max_carry_days, min_trades, pool_days,
+        window_sessions, min_prints, min_sessions_with_prints, max_days_since_print, level_sessions, level, prints, note]
 required_input: [id, side, source, calm, distress]
 sources:
   dtcc: "dtcc:<ENTITY> — on-the-run 5Y CDS from data/canonical/cds_trades.csv; entities: ORCL, CRWV, META"
+  fixed: "a value held from a dated edition: needs value and as_of. It counts only on and after as_of, never before"
 features:
-  min_trades: "integer 1-20: a day counts as a print only if the pool holds at least this many trades; otherwise the last level is carried"
-  pool_days: "integer 1-10: the level is the median of all trades over this many trading days, today included"
+  window_sessions: "integer 1-10: sessions in the window, today included (pool_days is the older name; use one)"
+  min_prints: "integer 1-50: prints needed in the window (min_trades is the older name)"
+  min_sessions_with_prints: "integer 1-10: sessions in the window that must have at least one print"
+  max_days_since_print: "integer 1-10: the last print must fall in the last N sessions, today included (1 = today)"
+  level: "median (of all prints in the level sessions, default) or median_of_daily_medians"
+  level_sessions: "integer 1-10, at most the window: the level uses only the last N sessions of the window (default: all
+    of it). Separates the guard (who may set a level) from the smoothing (how fast it follows the market)"
+  prints: "all (default: quoted and upfront-implied trades) or quoted_first (the day's quoted trades when there are any)"
   max_carry_days: "integer 1-30: how long the last level may be carried before the input is dropped"
+  min_trades: "older name for min_prints"
+  pool_days: "older name for window_sessions"
+rule: >
+  An input is set on a day when the window holds at least min_prints prints, on at least min_sessions_with_prints
+  sessions, with one in the last max_days_since_print sessions. Otherwise its last level is carried, flagged as carried,
+  for up to max_carry_days. Defaults reproduce v0.1: one print today sets the level.

@@ -49,7 +49,16 @@ python harness/score.py methods/v0.1-live.yaml     # score a method
 | --- | --- | --- |
 | A blank upfront read as 0 priced trades at their coupon | fixed 26 Nov 2026, also on the live site | `test_blank_upfront_is_missing_not_zero` |
 | The impossible sign of an unsigned upfront could be taken | fixed 26 Nov 2026, also on the live site | `test_infeasible_upfront_reading_is_never_taken` |
-| Coupons written in percent (1 = 1%) drop the trade | open, issue #7 | `test_percent_coupon_is_normalised` (expected to fail until fixed) |
+| Coupons written in percent (1 = 1%) drop the trade | fixed 26 Nov 2026 (issue #7): 48 Oracle and 9 Meta trades recovered | `test_percent_coupon_is_normalised` |
+| Unwind payments (UWIN) read as upfronts | fixed 26 Nov 2026: 26 Oracle trades removed | `test_unwind_payment_is_not_an_upfront` |
+| Quoted spreads sometimes in raw bp (365, not 0.0365) | handled; 1 Meta record in a year | `test_quoted_spread_in_raw_bp_is_read_as_bp` |
+| A failed download cached as an empty file, never retried | fixed 26 Nov 2026: only valid ZIPs are written | `test_failed_download_writes_nothing_and_is_retried` |
+| A republished raw file stops the run | now a logged conflict: original kept, day left out | `test_republished_file_is_a_logged_conflict` |
+| Capped notionals (`5,000,000+`) | flagged per day (`n_capped`); the upfront is reported on the cap, no bias found | `test_capped_notional_is_counted` |
+
+CoreWeave has no quoted on-the-run 5-year print in the year: every CoreWeave level is implied from upfronts with a model
+(flat hazard, 40% recovery, 4.5% rate). `cds_daily.official_kind` says so on every row. What the P0 fixes changed:
+`research/findings/2026-11-26-p0-tape-hygiene.md`.
 
 Field-by-field decoding of the raw file: `research/sources/dtcc-sbsr-credits.md`.
 

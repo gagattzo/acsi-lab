@@ -1,23 +1,30 @@
 """DTCC public swap data (SEC Regulation SBSR) -> canonical CDS tables.
 
-Raw:       data/raw/dtcc/YYYY-MM-DD.zip          one end-of-day credit file per weekday, as published
-Manifest:  manifests/dtcc_sha256.csv              sha256 of every raw file (committed: a changed file fails the run)
+Raw:       data/raw/dtcc/YYYY-MM-DD.zip          one end-of-day credit file per weekday, as published; only valid ZIPs
+                                                  are kept, a failed download leaves no file and is retried next run
+Manifest:  manifests/dtcc_sha256.csv              append-only: sha256 of every raw file kept (committed)
+Conflicts: manifests/dtcc_conflicts.csv           a re-download whose hash differs from the manifest; the bytes go to
+                                                  data/raw/dtcc/conflicts/, the day is left out until a human decides
 Canonical: data/canonical/cds_trades.csv          one row per priced trade (schema/cds_trades.yaml)
            data/canonical/cds_daily.csv           one row per entity-day (schema/cds_daily.yaml)
 
 Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.py):
   - CDS rows only: no loans (LX ids), total return swaps or delayed-draw loans; needs a coupon or a quoted spread
   - cancelled trades (EROR) removed, corrections (CORR) replace the record they correct, same-day executions only
-  - on-the-run 5-year maturity only
-  - quoted spreads used as reported when 10-5,000 bp; 0 or blank means "not quoted"
-  - a blank upfront is missing, not zero
-  - upfront-only trades converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate); DTCC upfronts are
+  - on-the-run 5-year maturity only (ISDA semi-annual roll, 20 Mar / 20 Sep)
+  - coupons written in percent (1 = 1%) are divided by 100; only 0 < coupon <= 10% is kept (issue #7)
+  - quoted spreads as decimals (0.0365) or raw bp (365) are both read; only 10-5,000 bp is kept; 0 or blank = not quoted
+  - an upfront is read only when Other payment type is UFRO (UWIN = unwind, not an entry price); blank = missing, not 0
+  - upfront trades converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate); DTCC upfronts are
     unsigned, so the feasible reading (10 bp or more) closer to the day's quoted median (or the previous level) wins
-  - daily level = median of the day's priced trades
+  - quoted and upfront-implied spreads are kept in separate columns. Official level: the median of all the day's priced
+    trades; official_kind says what it rests on (quoted, upfront_implied or mixed). Quoted-only was tested and rejected:
+    on Oracle the two differ by a median 1.3 bp, and dropping implied prints more than doubles the days resting on
+    under 3 trades (research/findings/2026-11-26-p0-tape-hygiene.md). Methods can still choose prints: quoted_first.
 
 Usage: python harness/dtcc.py [--days 400] [--offline]
 """
-import argparse, concurrent.futures as cf, csv, datetime as dt, hashlib, io, math, pathlib, statistics, sys, urllib.request, zipfile
+import argparse, concurrent.futures as cf, csv, datetime as dt, hashlib, io, math, pathlib, statistics, sys, time, urllib.request, zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 URL = 'https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_{}.zip'
@@ -29,8 +36,12 @@ ENTITIES = {  # id: (name match, RED code)
 }
 DAY = 86400.0
 RATE, RECOVERY = 0.045, 0.40
-TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread_bp', 'coupon', 'upfront_pct', 'notional_capped']
-DAILY_FIELDS = ['date', 'entity', 'bp', 'trades', 'quoted', 'loo_bp', 'last_trade']
+TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread_bp', 'coupon', 'coupon_normalised',
+                'upfront_pct', 'notional_capped']
+DAILY_FIELDS = ['date', 'entity', 'official_bp', 'official_kind', 'official_trades', 'quoted_median_bp', 'quoted_trades',
+                'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised']
+MAN_FIELDS = ['date', 'url', 'bytes', 'sha256', 'fetched_at']
+CONFLICT_FIELDS = ['date', 'manifest_sha256', 'new_sha256', 'new_bytes', 'path', 'fetched_at']
 
 
 def fnum(v):
@@ -43,6 +54,29 @@ def fnum(v):
     except ValueError:
         return None
     return x if math.isfinite(x) else None
+
+
+def coupon(v):
+    """(running coupon as a decimal or None, normalised?). 1 means 1%: values of 0.5 or more are percent units."""
+    c = fnum(v)
+    if c is None or c <= 0:
+        return None, False
+    norm = c >= 0.5
+    if norm:
+        c = c / 100
+    return (c if c <= 0.10 else None), norm
+
+
+def quoted_spread(v):
+    """Quoted par spread as a decimal, or None. Decimals (0.0365) and raw bp (365) both occur; 10-5,000 bp is kept."""
+    q = fnum(v)
+    if not q or q <= 0:
+        return None
+    if q >= 5:
+        q = q / 10000  # raw basis points
+    elif q >= 0.5:
+        return None  # 0.5-5 is neither a plausible decimal spread nor a plausible bp figure
+    return q if 0.001 <= q <= 0.5 else None
 
 
 def ts(s):
@@ -144,24 +178,25 @@ def parse_day(rows, day, prev):
             ex, exp = ts(r.get('Execution Timestamp')), ts(str(r.get('Expiration Date', '')) + 'T00:00:00Z')
             if ex is None or exp is None or exp != on_the_run_5y(ex):
                 continue
-            C = fnum(r.get('Fixed rate-Leg 1')) or 0.0
+            C, norm = coupon(r.get('Fixed rate-Leg 1'))
             step = ex + DAY
             T = (exp - step) / (365.25 * DAY)
             accr = (step - last_imm(ex)) / (360 * DAY)
             N = fnum(r.get('Notional amount-Leg 1'))
-            amt = fnum(r.get('Other payment amount'))
-            pct = amt / N if (N and N > 0 and amt is not None) else None
+            amt = fnum(r.get('Other payment amount'))  # blank stays None: no upfront, no reading
+            ufro = str(r.get('Other payment type', '')).strip().upper() == 'UFRO'
+            pct = amt / N if (ufro and N and N > 0 and amt is not None) else None
             meta = {'dissemination_id': r.get('Dissemination Identifier', ''), 'exec_ts': r.get('Execution Timestamp', ''),
-                    'coupon': C or None, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
-            q = fnum(r.get('Spread-Leg 1'))
-            if q:
-                if 0.001 <= q < 0.5:
-                    quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(pct * 100, 4))))
+                    'coupon': C, 'coupon_normalised': norm, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
+            q = quoted_spread(r.get('Spread-Leg 1'))
+            if fnum(r.get('Spread-Leg 1')):
+                if q is not None:
+                    quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(abs(pct) * 100, 4))))
             elif pct is not None and C:
                 ups.append((spread_from_upfront(abs(pct), C, T, accr), spread_from_upfront(-abs(pct), C, T, accr), abs(pct), ex,
                             dict(meta, kind='upfront', upfront_pct=round(abs(pct) * 100, 4))))
         ref = statistics.median([x[0] for x in quoted]) if quoted else (prev[eid] / 10000 if prev.get(eid) else None)
-        priced = list(quoted)
+        implied = []
         ok = lambda x: 0.001 <= x < 1  # a reading at the solver's floor (under 10 bp) is the impossible sign, not a price
         for hi, lo, p, ex, meta in ups:
             s = None
@@ -171,17 +206,24 @@ def parse_day(rows, day, prev):
             elif ref is None and p >= 0.02 and ok(hi):
                 s = hi
             if s is not None:
-                priced.append((s, ex, meta))
-        if not priced:
+                implied.append((s, ex, meta))
+        if not quoted and not implied:
             continue
-        vals = [x[0] for x in priced]
+        official = quoted + implied
+        kind = 'mixed' if (quoted and implied) else ('quoted' if quoted else 'upfront_implied')
+        vals = [x[0] for x in official]
         med = statistics.median(vals)
         loo = max(abs(statistics.median(vals[:i] + vals[i + 1:]) - med) for i in range(len(vals))) if len(vals) > 1 else None
-        last = max(x[1] for x in priced)
-        levels[eid] = {'date': day, 'entity': eid, 'bp': round(med * 10000, 1), 'trades': len(vals), 'quoted': len(quoted),
+        last = max(x[1] for x in official)
+        bp = lambda xs: round(statistics.median([x[0] for x in xs]) * 10000, 1) if xs else None
+        levels[eid] = {'date': day, 'entity': eid, 'official_bp': round(med * 10000, 1), 'official_kind': kind,
+                       'official_trades': len(vals), 'quoted_median_bp': bp(quoted), 'quoted_trades': len(quoted),
+                       'upfront_implied_bp': bp(implied), 'upfront_trades': len(implied),
                        'loo_bp': None if loo is None else round(loo * 10000, 1),
-                       'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat()}
-        for s, ex, meta in priced:
+                       'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat(),
+                       'n_capped': sum(1 for x in official if x[2]['notional_capped']),
+                       'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised'])}
+        for s, ex, meta in official:
             trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
     return levels, trades
 
@@ -191,29 +233,97 @@ def rows_of(b):
     return list(csv.DictReader(io.StringIO(z.read(z.namelist()[0]).decode('utf-8', 'replace'))))
 
 
+def valid_zip(b):
+    """A published day: a ZIP whose first member is a CSV with a header row."""
+    if not b or b[:2] != b'PK':
+        return False
+    try:
+        z = zipfile.ZipFile(io.BytesIO(b))
+        name = z.namelist()[0]
+        return name.lower().endswith('.csv') and bool(z.read(name)[:200].strip())
+    except Exception:
+        return False
+
+
+def download(day, tries=3):
+    req = urllib.request.Request(URL.format(day.replace('-', '_')), headers={'User-Agent': UA, 'Accept': '*/*'})
+    for k in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                b = r.read()
+            if valid_zip(b):
+                return b
+        except Exception:
+            pass
+        time.sleep(1.5 * (k + 1))
+    return None
+
+
 def fetch(day, raw, offline):
+    """Bytes of the day's file, or None. Only a valid ZIP is ever written, so a failure is retried on the next run;
+    a file on disk is never overwritten."""
     p = raw / f'{day}.zip'
     if p.exists():
-        return p.read_bytes() or None
+        b = p.read_bytes()
+        if valid_zip(b):
+            return b
+        p.unlink()  # an empty or broken file left by an older version of this script: fetch again
     if offline:
         return None
-    req = urllib.request.Request(URL.format(day.replace('-', '_')), headers={'User-Agent': UA, 'Accept': '*/*'})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            b = r.read()
-    except Exception:
-        b = b''
-    if b[:2] != b'PK':
-        b = b''
-    if b or day < (dt.date.today() - dt.timedelta(days=3)).isoformat():
-        p.write_bytes(b)  # remember old misses (holidays) so they are not re-fetched every run
-    return b or None
+    b = download(day)
+    if b is None:
+        return None
+    tmp = p.with_suffix('.part')
+    tmp.write_bytes(b)
+    tmp.replace(p)
+    return b
 
 
 def load_manifest(path):
     if not path.exists():
         return {}
     return {r['date']: r for r in csv.DictReader(open(path))}
+
+
+def append_rows(path, fields, rows):
+    new = not path.exists()
+    with open(path, 'a', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
+        if new:
+            w.writeheader()
+        w.writerows(rows)
+
+
+def check_provenance(days, blobs, raw, man_path, conf_path):
+    """Every raw file must match the append-only manifest. New days are appended. A day whose bytes differ from the
+    manifest is a conflict: its bytes are kept under conflicts/, it is logged, and it is left out of the tables."""
+    manifest = load_manifest(man_path)
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+    added, conflicts = [], []
+    for d in days:
+        b = blobs[d]
+        if not b:
+            continue
+        h = hashlib.sha256(b).hexdigest()
+        if d in manifest and manifest[d]['sha256'] != h:
+            cdir = raw / 'conflicts'; cdir.mkdir(exist_ok=True)
+            cp = cdir / f'{d}-{h[:12]}.zip'
+            if not cp.exists():
+                cp.write_bytes(b)
+            conflicts.append({'date': d, 'manifest_sha256': manifest[d]['sha256'], 'new_sha256': h, 'new_bytes': len(b),
+                              'path': str(cp.relative_to(ROOT)), 'fetched_at': now})
+            blobs[d] = None
+            (raw / f'{d}.zip').unlink(missing_ok=True)
+        elif d not in manifest:
+            added.append({'date': d, 'url': URL.format(d.replace('-', '_')), 'bytes': len(b), 'sha256': h, 'fetched_at': now})
+    if added:
+        append_rows(man_path, MAN_FIELDS, sorted(added, key=lambda r: r['date']))
+    if conflicts:
+        seen = {(r['date'], r['new_sha256']) for r in csv.DictReader(open(conf_path))} if conf_path.exists() else set()
+        append_rows(conf_path, CONFLICT_FIELDS, [c for c in conflicts if (c['date'], c['new_sha256']) not in seen])
+        print(f'WARNING: {len(conflicts)} raw file(s) differ from the manifest ({", ".join(c["date"] for c in conflicts)}); '
+              'left out of the tables and logged in manifests/dtcc_conflicts.csv. Investigate.', file=sys.stderr)
+    return len(added), conflicts
 
 
 def main():
@@ -229,25 +339,7 @@ def main():
     with cf.ThreadPoolExecutor(12) as ex:
         blobs = dict(zip(days, ex.map(lambda d: fetch(d, raw, a.offline), days)))
 
-    # Provenance: every raw file must match the committed manifest; new days are appended.
-    manifest = load_manifest(man_path)
-    bad = []
-    for d in days:
-        b = blobs[d]
-        if not b:
-            continue
-        h = hashlib.sha256(b).hexdigest()
-        if d in manifest and manifest[d]['sha256'] != h:
-            bad.append(d)
-        elif d not in manifest:
-            manifest[d] = {'date': d, 'url': URL.format(d.replace('-', '_')), 'bytes': len(b), 'sha256': h}
-    if bad:
-        sys.exit(f'raw files differ from manifests/dtcc_sha256.csv on {", ".join(bad)}: DTCC republished them or someone '
-                 'tampered with the data. Investigate before scoring.')
-    with open(man_path, 'w', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=['date', 'url', 'bytes', 'sha256']); w.writeheader()
-        for d in sorted(manifest):
-            w.writerow(manifest[d])
+    added, conflicts = check_provenance(days, blobs, raw, man_path, ROOT / 'manifests' / 'dtcc_conflicts.csv')
 
     prev, daily, trades = {}, [], []
     for d in days:
@@ -255,14 +347,14 @@ def main():
             continue
         lv, tr = parse_day(rows_of(blobs[d]), d, prev)
         for eid, v in lv.items():
-            prev[eid] = v['bp']
+            prev[eid] = v['official_bp']
             daily.append(v)
         trades.extend(tr)
     for name, fields, rows in (('cds_daily.csv', DAILY_FIELDS, daily), ('cds_trades.csv', TRADE_FIELDS, trades)):
         with open(canon / name, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=fields); w.writeheader(); w.writerows(rows)
-    print(f'{sum(1 for d in days if blobs[d])} raw files (hashes checked), {len(daily)} entity-days, {len(trades)} priced trades '
-          f'-> data/canonical/', file=sys.stderr)
+    print(f'{sum(1 for d in days if blobs[d])} raw files (hashes checked, {added} new, {len(conflicts)} conflicts), '
+          f'{len(daily)} entity-days, {len(trades)} priced trades -> data/canonical/', file=sys.stderr)
 
 
 if __name__ == '__main__':

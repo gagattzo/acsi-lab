@@ -40,7 +40,7 @@ No evidence, no status change.
 
 Read `DATA.md` first. A method can only combine features the pipeline defines; it cannot run code.
 
-1. Copy `methods/v0.1-live.yaml` to `methods/<handle>-<idea>.yaml` and change it, using only the keys and features in `schema/method.yaml` (for example `min_trades`, `pool_days`). Run `python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml` before you open anything.
+1. Copy `methods/v0.1-live.yaml` to `methods/<handle>-<idea>.yaml` and change it, using only the keys and features in `schema/method.yaml` (for example `window_sessions`, `min_prints`, `max_days_since_print`, `level_sessions`, `prints`). Run `python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml` before you open anything.
 2. A new kind of data is a separate pull request with all five parts in `DATA.md` ("Adding a source"): decoding, loader, schema, tests, feature. It is reviewed before it runs in CI.
 3. Open a pull request with the method file. CI scores it with the maintainers' harness and posts the scorecard; it never runs code from your pull request.
 

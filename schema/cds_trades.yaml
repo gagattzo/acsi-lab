@@ -8,8 +8,9 @@ columns:
   - {name: entity, type: enum, values: [ORCL, CRWV, META], description: Reference entity}
   - {name: dissemination_id, type: string, description: "DTCC Dissemination Identifier of the kept record (after corrections)"}
   - {name: exec_ts, type: datetime, description: Execution time as reported}
-  - {name: kind, type: enum, values: [quoted, upfront], description: "quoted: spread reported directly; upfront: converted from the upfront payment"}
+  - {name: kind, type: enum, values: [quoted, upfront], description: "quoted: spread reported directly; upfront: implied from a UFRO upfront payment (model: flat hazard, 40% recovery, 4.5% rate)"}
   - {name: spread_bp, type: float, min: 10, max: 10000, unit: bp, description: Par spread used for the daily median}
-  - {name: coupon, type: float, nullable: true, min: 0, max: 100, unit: decimal, description: "Running coupon as reported (0.01 = 1%). Values above 0.2 are percent units: issue #7"}
-  - {name: upfront_pct, type: float, nullable: true, unit: percent of notional, description: "Upfront payment, unsigned, as % of notional"}
+  - {name: coupon, type: float, nullable: true, min: 0.0001, max: 0.10, unit: decimal, description: "Running coupon after normalisation (0.01 = 1%); blank when not reported"}
+  - {name: coupon_normalised, type: bool, description: "The coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
+  - {name: upfront_pct, type: float, nullable: true, unit: percent of notional, description: "Upfront payment (UFRO only), unsigned, as % of notional"}
   - {name: notional_capped, type: bool, description: "Notional shows the reporting cap (+); true size is larger"}

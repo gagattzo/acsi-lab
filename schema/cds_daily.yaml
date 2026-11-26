@@ -6,8 +6,14 @@ key: [date, entity]
 columns:
   - {name: date, type: date}
   - {name: entity, type: enum, values: [ORCL, CRWV, META]}
-  - {name: bp, type: float, min: 10, max: 10000, unit: bp, description: Median par spread of the day's priced trades}
-  - {name: trades, type: int, min: 1, description: Priced trades that day}
-  - {name: quoted, type: int, min: 0, description: Of which reported with a quoted spread}
-  - {name: loo_bp, type: float, nullable: true, min: 0, unit: bp, description: "Largest move in the median from removing one trade (blank with one trade)"}
+  - {name: official_bp, type: float, min: 10, max: 10000, unit: bp, description: "Official level: median par spread of all the day's priced trades"}
+  - {name: official_kind, type: enum, values: [quoted, upfront_implied, mixed], description: "What the official level rests on: quoted spreads only, spreads implied from upfronts only (a model: flat hazard, 40% recovery, 4.5% rate), or both"}
+  - {name: official_trades, type: int, min: 1, description: Trades in the official median}
+  - {name: quoted_median_bp, type: float, nullable: true, min: 10, max: 10000, unit: bp, description: Median of quoted spreads only (blank when none were quoted)}
+  - {name: quoted_trades, type: int, min: 0}
+  - {name: upfront_implied_bp, type: float, nullable: true, min: 10, max: 10000, unit: bp, description: Median of upfront-implied spreads only (blank when none)}
+  - {name: upfront_trades, type: int, min: 0}
+  - {name: loo_bp, type: float, nullable: true, min: 0, unit: bp, description: "Largest move in the official median from removing one trade (blank with one trade)"}
   - {name: last_trade, type: datetime}
+  - {name: n_capped, type: int, min: 0, description: "Trades whose notional shows the reporting cap (+); their upfront % is computed on the cap, and a check found no bias (median 0.5 bp)"}
+  - {name: n_percent_coupon_normalised, type: int, min: 0, description: "Trades whose coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}

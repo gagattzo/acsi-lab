@@ -10,17 +10,28 @@ Two scores from 0 to 100. Debt stress comes from CoreWeave credit, Oracle 5-year
 
 ## Where it stands
 
-The baseline, `methods/v0.1-live.yaml`, scored on 262 trading days (24 Oct 2025 to 25 Nov 2026):
+The baseline, `methods/v0.1-live.yaml`, is the v0.1 gap index reprinted daily. Only the two CDS inputs move. F1 is a
+**model-implied** CoreWeave level, because CoreWeave has no quoted 5-year spread on the tape, so it is computed from
+upfront payments. Loans and GPU rents are **held at the 24 Nov 2026 edition** and count only from that date. That makes
+the year of history the financing side (F1 and F2) alone. It is not yet a live debt-versus-GPU measure.
+
+Scored on 262 trading days (24 Oct 2025 to 25 Nov 2026), daily changes:
 
 | Test | Baseline | Read |
 | --- | --- | --- |
-| R² of the daily gap change on the Nasdaq's daily return | 0.017 | The Nasdaq explains under 2% of the gap's daily moves |
-| Most a single trade moved the gap | 5.41 points | Too much: thin CoreWeave CDS days |
+| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 | Broad markets explain under 4% of daily moves |
+| Most a single trade moved it | 21.2 points (p95 6.8) | Far too much: on a quiet day one CoreWeave print sets the level alone |
 | Days resting on an input with fewer than 3 trades | 77% | The main weakness |
+| Days a level is set by a single trade | 32% | |
 | Weekdays with a same-day CoreWeave CDS trade | 63% | Oracle: 97% |
 | Inputs from sources we may not redistribute | 3 of 5 | Loans (press), H100 and Blackwell rents (Silicon Data) |
 
-Open problems, in order: make it hard for one trade to move the index; find free, redistributable daily data for GPU rents and loan prices; decide what volatility the index should have.
+The one-trade figure was 5.41 until 26 Nov 2026. It measured only trades removed within a day, so it scored a day
+resting on one trade as 0, and a constant loan value painted across the year diluted the rest by a third. Both are
+fixed. See `research/findings/2026-11-26-p0-tape-hygiene.md` and `research/findings/2026-11-26-frozen-legs-and-one-trade.md`.
+
+Open problems, in order: make it hard for one trade to move the index without lagging real repricings; find free,
+redistributable daily data for GPU rents and loan prices; decide what volatility the index should have.
 
 ## Connect your agent
 

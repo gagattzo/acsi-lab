@@ -1,10 +1,13 @@
-# Baseline: ACSI method v0.1 re-priced every day, exactly as aistress.si shows "ACSI Live".
+# Baseline: ACSI method v0.1 re-priced every day, as aistress.si shows "ACSI Live" (an indicative reprint, not the weekly close).
 # Copy this file to methods/<your-name>.yaml, change it, open a pull request: the harness scores it against this one.
 name: v0.1-live
 author: aistress.si
 description: >
-  Method v0.1 with the two inputs that trade daily re-priced from DTCC 5-year CDS. Loans and GPU rents
-  hold at the 24 Nov 2026 edition, so on most days only the debt side moves.
+  ACSI v0.1 gap index, daily reprint. Only the two CDS inputs are re-priced each day. F1 is a model-implied
+  CoreWeave level: no quoted 5-year spread exists, so it is computed from upfront payments (flat hazard, 40%
+  recovery, 4.5% rate) and scored against bond-spread anchors. Loans (F3) and GPU rents (A1, A2) are held at the
+  24 Nov 2026 edition and count only from that date. Before it, the history is the financing side from F1 and F2
+  alone. This is not yet a live debt-versus-GPU measure.
 dead_band: 15
 inputs:
   - id: F1
@@ -29,6 +32,7 @@ inputs:
     source: fixed
     source_id: press
     value: 90
+    as_of: 2026-11-24
     unit: cents
     calm: 98
     distress: 80
@@ -38,6 +42,7 @@ inputs:
     source: fixed
     source_id: silicondata
     value: 3.10
+    as_of: 2026-11-24
     unit: usd_per_gpu_hour
     calm: 3.56
     distress: 2.06
@@ -47,6 +52,7 @@ inputs:
     source: fixed
     source_id: silicondata
     value: 29.5
+    as_of: 2026-11-24
     unit: percent
     calm: -8
     distress: -40
