@@ -1,0 +1,80 @@
+# Stack method, version 0 (Marcello Bardus's Stack, METHODOLOGIES section 4). Data only: validated by stack/config.py
+# against schema/stack_method.yaml. Deliberately not under methods/: the score workflow would try to score it with the
+# v0.x harness.
+#
+# Every cutpoint, window, anchor and weight below is a proposed example, not calibrated; a human freezes them before
+# any backfill is evidence.
+name: stack
+version: 0.0.1
+status: proposed
+description: >
+  Four layers of the capital structure of AI-infrastructure borrowers: L1 equity, L2 traded credit (CDS), L3 private
+  loan marks (BDC filings), L4 fundamentals (SEC filings). Each layer gets a band; Depth counts the layers at Stressed or
+  worse. Junior = L1 and L2 (daily), senior = L3 and L4 (monthly). Proposed examples, not calibrated.
+
+engine:
+  tau: 2.0
+  bands: {normal: 35, watch: 50, stressed: 65, severe: 80}
+  hysteresis: {junior_up_closes: 2, senior_up_releases: 1, down_margin: 4}
+  min_live_share: 0.7
+  staleness: {full_weight_days: 120, zero_weight_days: 180}
+  group_cap: 0.2
+  min_groups_for_stressed: 2
+
+# Consolidated borrower groups (a parent and its SPVs count as one). Entity ids are the DTCC ids in harness/dtcc.py.
+# TODO: harness/dtcc.py emits only ORCL, CRWV and META. Candidates on the tape with on-the-run 5Y CDS (27 Nov 2026
+# check): SoftBank (SFTBY, RED JQCEFX), Microsoft (MSFT, 5EDDA9), Alphabet (GOOGL, 0C27GT), Amazon (AMZN, 0C5448).
+# Adding them leaves the existing rows unchanged but adds dates to the calendar harness/score.py builds from
+# cds_trades.csv, which moves the v0.x scorecards, so it waits for a maintainer decision. With fewer than 5 groups the
+# 20% cap is infeasible and the layer runs on equal weights (cap_infeasible).
+groups:
+  Oracle: [ORCL]
+  CoreWeave: [CRWV]
+  Meta: [META]
+
+layers:
+  L1:
+    name: Equity
+    kind: junior
+    cadence: daily
+    note: E1 AI borrowers, E2 AI-HPC miners, E3 exposed-lender spread (Candidate A). Not implemented yet.
+  L2:
+    name: Traded credit
+    kind: junior
+    cadence: daily
+    note: >
+      Per name, the median of daily medians of on-the-run 5Y CDS spreads over the last 5 sessions, its change over 5
+      sessions and a robust z of that change over the name's own history. Upfront-implied prints use the harness
+      convention (flat hazard, 40% recovery, 4.5% rate) and are labelled.
+    entities: [ORCL, CRWV, META]
+    prints: all
+    window_sessions: 5
+    change_sessions: 5
+    min_prints: 5
+    min_sessions_with_prints: 3
+    max_sessions_since_print: 2
+    z_window: 252
+    z_min_history: 126
+    z_floor_bp: 5
+    min_sessions_archived: 126
+  L3:
+    name: Private loan marks
+    kind: senior
+    cadence: monthly
+    note: m1 same-facility markdown, m2 breadth, m3 added PIK, m4 non-accrual (BDC Data Sets). Not implemented yet.
+  L4:
+    name: Fundamentals
+    kind: senior
+    cadence: per_filing
+    note: f1 funding gap, f2 leverage to revenue, f3 leverage effect of interest burden, f4 8-K debt events. Not implemented yet.
+
+composites:
+  junior:
+    layers: {L1: 0.6, L2: 0.4}
+    note: L2 counts 0 until min_sessions_archived sessions are archived (enforced in code).
+  senior:
+    layers: {L3: 0.5, L4: 0.5}
+  weekly_stack:
+    layers: {L1: 0.2, L2: 0.2, L3: 0.3, L4: 0.3}
+    adopted: false
+    note: Optional weekly Stack Z, only with --weekly. Junior layers averaged over the week.

@@ -1,0 +1,101 @@
+# What a Stack method file (stack/stack-v0.yaml) may contain. stack/config.py rejects any key not listed here, any value
+# of the wrong type or outside its range, and any entity that is not mapped to a borrower group. Like schema/method.yaml:
+# a method combines what the pipeline defines; it cannot run code. A new layer metric needs a loader, tests and an entry
+# here (one reviewed pull request).
+#
+# Types: str, int, number, bool, enum (values), list_str, map_number (name -> number), groups (group -> list of entity
+# ids), or the name of another section below. min and max are inclusive.
+sections:
+  top:
+    required: [name, version, engine, groups, layers, composites]
+    keys:
+      name: {type: str}
+      version: {type: str}
+      status: {type: enum, values: [proposed, frozen, adopted]}
+      description: {type: str}
+      engine: {type: engine}
+      groups: {type: groups}
+      layers: {type: layers}
+      composites: {type: composites}
+
+  engine:
+    required: [tau, bands, hysteresis, min_live_share, staleness, group_cap, min_groups_for_stressed]
+    keys:
+      tau: {type: number, min: 0.1, max: 20, description: "Level = 100 / (1 + exp(-Z / tau))"}
+      bands: {type: bands}
+      hysteresis: {type: hysteresis}
+      min_live_share: {type: number, min: 0, max: 1, description: "A composite is published only with this share of its target weight live"}
+      staleness: {type: staleness}
+      group_cap: {type: number, min: 0.01, max: 1, description: "Largest share of a layer one borrower group may carry"}
+      min_groups_for_stressed: {type: int, min: 1, max: 10, description: "Groups at Stressed or worse needed for a layer to be Stressed or Severe"}
+
+  bands:
+    required: [normal, watch, stressed, severe]
+    keys:
+      normal: {type: number, min: 0, max: 100, description: "Lower edge of Normal (Calm is below it)"}
+      watch: {type: number, min: 0, max: 100}
+      stressed: {type: number, min: 0, max: 100}
+      severe: {type: number, min: 0, max: 100}
+
+  hysteresis:
+    required: [junior_up_closes, senior_up_releases, down_margin]
+    keys:
+      junior_up_closes: {type: int, min: 1, max: 10, description: "Consecutive fresh daily closes needed to move a junior band up"}
+      senior_up_releases: {type: int, min: 1, max: 4, description: "Fresh releases needed to move a senior band up"}
+      down_margin: {type: number, min: 0, max: 20, description: "Points below a cut needed to move a band down"}
+
+  staleness:
+    required: [full_weight_days, zero_weight_days]
+    keys:
+      full_weight_days: {type: int, min: 1, max: 400, description: "Days after period end with full weight"}
+      zero_weight_days: {type: int, min: 2, max: 500, description: "Days after period end at which the weight reaches 0"}
+
+  layers:
+    required: [L1, L2, L3, L4]
+    keys:
+      L1: {type: layer_stub}
+      L2: {type: layer_l2}
+      L3: {type: layer_stub}
+      L4: {type: layer_stub}
+
+  layer_stub:
+    required: [name, kind, cadence]
+    keys:
+      name: {type: str}
+      kind: {type: enum, values: [junior, senior]}
+      cadence: {type: enum, values: [daily, monthly, per_filing]}
+      note: {type: str}
+
+  layer_l2:
+    required: [name, kind, cadence, entities, window_sessions, change_sessions, min_prints, min_sessions_with_prints,
+               max_sessions_since_print, z_window, z_min_history, z_floor_bp, min_sessions_archived]
+    keys:
+      name: {type: str}
+      kind: {type: enum, values: [junior]}
+      cadence: {type: enum, values: [daily]}
+      note: {type: str}
+      entities: {type: list_str, description: "DTCC entity ids from data/canonical/cds_trades.csv (harness/dtcc.py ENTITIES)"}
+      prints: {type: enum, values: [all, quoted_first], description: "all priced trades (default), or the day's quoted trades when there are any"}
+      window_sessions: {type: int, min: 1, max: 20, description: "Sessions in the level and eligibility window, today included"}
+      change_sessions: {type: int, min: 1, max: 60, description: "The change is level today minus level this many sessions earlier"}
+      min_prints: {type: int, min: 1, max: 100, description: "Prints needed in the window"}
+      min_sessions_with_prints: {type: int, min: 1, max: 20, description: "Sessions in the window with at least one print"}
+      max_sessions_since_print: {type: int, min: 1, max: 20, description: "The last print must fall in the last N sessions, today included"}
+      z_window: {type: int, min: 20, max: 1000, description: "Previous observations used for the robust z"}
+      z_min_history: {type: int, min: 5, max: 1000, description: "Fewer previous observations than this: insufficient_history"}
+      z_floor_bp: {type: number, min: 0.01, max: 1000, description: "Floor on 1.4826 * MAD, in bp of change"}
+      min_sessions_archived: {type: int, min: 1, max: 2000, description: "L2 weight is 0 in every composite until this many sessions are archived"}
+
+  composites:
+    required: [junior, senior]
+    keys:
+      junior: {type: composite}
+      senior: {type: composite}
+      weekly_stack: {type: composite}
+
+  composite:
+    required: [layers]
+    keys:
+      layers: {type: map_number, min: 0, max: 1, description: "Layer id -> weight (0 = shown, not scored)"}
+      adopted: {type: bool}
+      note: {type: str}
