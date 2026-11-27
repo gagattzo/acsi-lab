@@ -18,6 +18,14 @@ sources:
     redistributable: true
     terms: U.S. government data, public; SEC fair-access rules apply to downloading (declare a User-Agent, stay under 10 requests a second)
     grade: A
+  - id: finra_trace
+    name: FINRA TRACE (corporate bond trades, incl. 144A)
+    url: https://www.finra.org/finra-data/fixed-income/about-cna-trade/
+    what: Every OTC trade in US corporate bonds; the only full daily price record for 144A data-center debt
+    updates: real time; end-of-day files
+    redistributable: false
+    terms: free page data for non-commercial use only (Fixed Income Data User Agreement); commercial use needs a TRACE licence. Not committed here
+    grade: A (data), blocked (licence)
   - id: fred
     name: FRED (St. Louis Fed)
     url: https://fred.stlouisfed.org
