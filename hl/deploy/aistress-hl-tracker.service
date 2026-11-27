@@ -1,0 +1,11 @@
+[Unit]
+Description=Stack proxy basket weekly rebalance on Hyperliquid (xyz)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=aistress
+WorkingDirectory=/opt/acsi-lab
+# HL_AGENT_KEY and HL_ACCOUNT live here, chmod 600, owned by the service user. Never in the unit file.
+EnvironmentFile=/etc/aistress-hl-tracker.env
+ExecStart=/opt/acsi-lab/.venv/bin/python -m hl.tracker --config hl/config.yaml --live

@@ -1,0 +1,10 @@
+[Unit]
+Description=Monday rebalance inside the US cash session
+
+[Timer]
+# 15:30 UTC = 10:30 ET in winter, 11:30 ET in summer (23:30 Asia/Shanghai). Both inside 09:30-16:00 ET.
+OnCalendar=Mon *-*-* 15:30:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

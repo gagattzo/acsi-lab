@@ -1,0 +1,20 @@
+# Copy to hl/config.yaml and pass with --config config.yaml. Every key is optional; defaults in hl/tracker.py.
+network: mainnet
+gross_usd: 1000            # sum of |leg notional| in USD
+exposure_scale: 1.0        # plain multiplier on gross_usd. No rule changes it; the basket is fixed-weight.
+rebalance_band: 0.10       # skip a leg when |delta| < 10% of its target
+min_order_usd: 10          # HL minimum order value
+max_leverage: 2            # isolated, capped at each asset's max (10x single stocks, 30x XYZ100)
+slippage: 0.005            # IOC limit = mid x (1 +/- 0.5%)
+order_style: ioc           # ioc, or alo (post-only at mid, may not fill)
+max_total_notional_usd: 5000
+max_funding_cost_hourly: 0.0001   # abort if our side pays more than 0.01%/h on any leg
+max_mid_oracle_dev: 0.02
+require_us_cash_session: true
+log_path: data/hl/hl_tracker.jsonl
+# weights: fitted points per 100% move; negative = short. Change only after a refit.
+weights:
+  xyz:ORCL: -64.41
+  xyz:IREN: -26.52
+  xyz:NBIS: -15.36
+  xyz:XYZ100: 200.19

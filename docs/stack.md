@@ -389,3 +389,8 @@ still). It was left unchanged.
   points recomputes the live share (and L3's weight factor) on that day, so the two can differ when a weight crosses
   the 70% line between points. `--spot-check` shows any such day.
 - FRED availability uses the next weekday; US holidays are not modelled.
+
+## Tracking on Hyperliquid
+
+A fixed-weight proxy basket of xyz perps that tracks the junior score, its fit and a dry-run-by-default tracker:
+`docs/hl-proxy-basket.md`.
