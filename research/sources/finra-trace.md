@@ -16,8 +16,8 @@ For ACSI it would fix the debt side's three problems at once:
 ## How to get it, and what each way allows
 | Route | What you get | Terms |
 | --- | --- | --- |
-| finra.org "Corporate and Agency Trade Activity" page (dataset `FixedIncomeMarket` / `CorporateAndAgencyTradeActivity`) | Trade-level prints by CUSIP: price, yield, size (capped), side, time | Free for **non-commercial** use under the Fixed Income Data User Agreement, accepted on the page. It is an interactive page for people; this lab does not script it |
-| FINRA API Console (`api.finra.org`), individual account | Query API with credentials; the catalog lists a TRACE dataset | Entitlement and fees per dataset; to be confirmed when an account is opened |
+| finra.org "Corporate and Agency Trade Activity" page (dataset `FixedIncomeMarket` / `CorporateAndAgencyTradeActivity`) | Trade-level prints by CUSIP: price, yield, size (capped), side, time | For people only: the Fixed Income Data User Agreement bars robots and any automatic process that monitors or copies the data, commercial or not. **Never scripted by this lab** |
+| FINRA API (`api.finra.org`), **Public** credential from the API Console (individual FINRA Gateway account) | The `fixedIncomeMarket` dataset group; whether it includes per-bond trade prices is to be checked with `research/tools/finra_probe.py` | Fixed Income Specific Terms: non-commercial use; data and derived data may be redistributed to end users for their non-commercial use, with FINRA attributed as owner and source, no fee, no further redistribution. **The route this lab uses** |
 | TRACE data licence (BTDS / BTDS-144A feeds, vendor or end-user agreement) | Real-time and end-of-day feeds | Required for commercial use, including settling a contract on the index |
 | Market-data vendors (Bloomberg, ICE, MarketAxess CP+) | Prices, often evaluated, by CUSIP | Paid; redistribution usually barred |
 
@@ -54,8 +54,9 @@ The 24 high-yield data-center bonds ZeroHedge charted on 25-26 Nov 2026 (univers
 4. Odd lots and inter-dealer prints sit next to institutional customer trades and can be far off the market.
 
 ## Terms
-Free page data: non-commercial only. A contract settling on the index is commercial, so a licence is needed before
-that. Until then, no TRACE data is committed to this repository.
+Through the API with a Public credential: a free public index derived from TRACE is allowed, attributed to FINRA,
+with no fee. A contract settling on the index is commercial: before that, TRACE inputs need a licence or must be
+removed. Raw TRACE rows are never committed to this repository; only derived daily levels are published.
 
 ## Open questions
 - Which FINRA product covers end-of-day 144A prices by CUSIP at the lowest cost, and does it allow publishing a
