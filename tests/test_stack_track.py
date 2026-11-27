@@ -126,7 +126,9 @@ def fake_root(tmp_path, n=30):
 def test_build_reports_every_layer_and_holds_no_timestamps(tmp_path):
     root, days = fake_root(tmp_path)
     out, inputs = build.run(days[-1], None, offline=True, root=root, weekly=True)
-    assert {k: out['layers'][k]['status'] for k in ('L1', 'L3', 'L4')} == {k: 'not_implemented' for k in ('L1', 'L3', 'L4')}
+    assert out['layers']['L1']['status'] == 'unavailable' and out['layers']['L1']['Z'] is None  # offline, no price cache
+    assert out['layers']['L3']['status'] == 'unavailable' and out['layers']['L3']['Z'] is None  # offline, no SEC BDC cache
+    assert {k: out['layers'][k]['status'] for k in ('L4',)} == {k: 'not_implemented' for k in ('L4',)}
     assert all(out['layers'][k]['reason'] for k in ('L1', 'L3', 'L4'))
     l2 = out['layers']['L2']
     assert l2['sessions_archived'] == 30 and not l2['scored']        # 30 < 126: shown, not scored

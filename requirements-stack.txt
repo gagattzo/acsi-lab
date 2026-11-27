@@ -1,0 +1,6 @@
+# Optional extras for the Stack index (stack/). Nothing CI runs needs these: tests and the build core use the standard
+# library and pyyaml only (requirements.txt).
+#
+# L1 equity prices: Yahoo Finance via yfinance, research use, not republishable. Imported lazily by stack/l1_equity.py;
+# without it, run the build with --offline on a populated data/raw/prices/.
+yfinance>=0.2.40

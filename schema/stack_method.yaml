@@ -53,10 +53,10 @@ sections:
   layers:
     required: [L1, L2, L3, L4]
     keys:
-      L1: {type: layer_stub}
+      L1: {type: layer_l1}
       L2: {type: layer_l2}
-      L3: {type: layer_stub}
-      L4: {type: layer_stub}
+      L3: {type: layer_l3}
+      L4: {type: layer_l4}
 
   layer_stub:
     required: [name, kind, cadence]
@@ -65,6 +65,40 @@ sections:
       kind: {type: enum, values: [junior, senior]}
       cadence: {type: enum, values: [daily, monthly, per_filing]}
       note: {type: str}
+
+  layer_l1:
+    required: [name, kind, cadence, e1, e2, e3_lenders, e3_benchmark, leg_weights, factors, fit_sessions, fit_min_obs,
+               sum_sessions, z_window, z_min_history, z_floor]
+    keys:
+      name: {type: str}
+      kind: {type: enum, values: [junior]}
+      cadence: {type: enum, values: [daily]}
+      note: {type: str}
+      e1: {type: list_str, description: "E1 AI borrowers (Yahoo tickers); a ticker in groups joins that group, else it is its own group"}
+      e2: {type: list_str, description: "E2 AI-HPC miners (Yahoo tickers)"}
+      e3_lenders: {type: list_str, description: "E3 exposed BDCs: their equal-weight log return minus e3_benchmark is one series"}
+      e3_lenders_note: {type: str}
+      e3_benchmark: {type: str, description: "Broad BDC benchmark (Yahoo ticker)"}
+      e3_group: {type: str, description: "The borrower-group name the E3 spread counts as (one group for the cap and the 2-group rule)"}
+      leg_weights: {type: map_number, min: 0, max: 1, description: "E1, E2, E3 -> weight; split equally over the leg's live names"}
+      membership: {type: groups, description: "ticker -> 'from:to' windows (ISO dates, either side blank) in which it is a member; outside them its prices are not used"}
+      price_start: {type: str, description: "First date downloaded and used (ISO)"}
+      factors: {type: l1_factors}
+      fit_sessions: {type: int, min: 20, max: 1000, description: "Rolling OLS window: the previous N sessions, day t excluded"}
+      fit_min_obs: {type: int, min: 10, max: 1000, description: "Valid returns needed in the fit window"}
+      sum_sessions: {type: int, min: 1, max: 20, description: "s = minus the sum of the last N daily residuals"}
+      z_window: {type: int, min: 20, max: 1000, description: "Previous s values used for the robust z"}
+      z_min_history: {type: int, min: 5, max: 1000, description: "Fewer previous s values than this: insufficient_history"}
+      z_floor: {type: number, min: 0.000001, max: 1, description: "Floor on 1.4826 * MAD, in log-return units"}
+
+  l1_factors:
+    required: [equity, credit, vix, rates, btc]
+    keys:
+      equity: {type: list_str, description: "Yahoo tickers whose daily log returns are factors; the first one sets the session calendar"}
+      credit: {type: enum, values: [hyg_ief, hy_oas], description: "HYG minus IEF log return (one price source) or the change in FRED BAMLH0A0HYM2"}
+      vix: {type: enum, values: [fred, yahoo], description: "Change in FRED VIXCLS or in Yahoo ^VIX"}
+      rates: {type: list_str, description: "FRED series ids whose daily change is a factor (DGS2, DGS10)"}
+      btc: {type: enum, values: [none, lagged], description: "E2 only: none, or the BTC-USD return lagged one day (Yahoo's same-day close is after the US close)"}
 
   layer_l2:
     required: [name, kind, cadence, entities, window_sessions, change_sessions, min_prints, min_sessions_with_prints,
@@ -85,6 +119,80 @@ sections:
       z_min_history: {type: int, min: 5, max: 1000, description: "Fewer previous observations than this: insufficient_history"}
       z_floor_bp: {type: number, min: 0.01, max: 1000, description: "Floor on 1.4826 * MAD, in bp of change"}
       min_sessions_archived: {type: int, min: 1, max: 2000, description: "L2 weight is 0 in every composite until this many sessions are archived"}
+
+  layer_l3:
+    required: [name, kind, cadence, months, score_rows, breadth_below, min_matched_facilities, group_weights,
+               metric_weights, anchors]
+    keys:
+      name: {type: str}
+      kind: {type: enum, values: [senior]}
+      cadence: {type: enum, values: [monthly]}
+      note: {type: str}
+      months: {type: list_str, description: "SEC BDC Data Sets files to read: YYYY_MM (monthly) or YYYYqQ (quarterly, to 2025 Q4)"}
+      score_rows: {type: enum, values: [signed_off, named_candidates], description: "signed_off (default): only rows with a human sign-off score; named_candidates is a comparison run that also scores named obligors without one (keyword leads never score)"}
+      breadth_below: {type: number, min: 0.5, max: 1, description: "m2 counts matched principal marked below this FV / cost"}
+      min_matched_facilities: {type: int, min: 1, max: 100, description: "A borrower group scores only with this many matched facilities"}
+      group_weights: {type: enum, values: [matched_principal, equal], description: "Base weight of a group before the group cap"}
+      metric_weights: {type: l3_metrics_weights}
+      anchors: {type: l3_anchors}
+
+  l3_metrics_weights:
+    required: [m0_level, m1_markdown, m2_breadth, m3_added_pik, m4_non_accrual]
+    keys:
+      m0_level: {type: number, min: 0, max: 1, description: "FV / cost now (context; L3 scores changes and breadth, not levels)"}
+      m1_markdown: {type: number, min: 0, max: 1, description: "Same-facility change in FV / cost"}
+      m2_breadth: {type: number, min: 0, max: 1, description: "Share of matched principal below breadth_below"}
+      m3_added_pik: {type: number, min: 0, max: 1, description: "Share of matched principal with PIK added since the prior vintage"}
+      m4_non_accrual: {type: number, min: 0, max: 1, description: "Not implemented: needs footnote parsing"}
+
+  l3_anchors:
+    required: [m0_level, m1_markdown, m2_breadth, m3_added_pik, m4_non_accrual]
+    keys:
+      m0_level: {type: l3_anchor}
+      m1_markdown: {type: l3_anchor}
+      m2_breadth: {type: l3_anchor}
+      m3_added_pik: {type: l3_anchor}
+      m4_non_accrual: {type: l3_anchor}
+
+  l3_anchor:
+    required: [anchor, scale, higher_is_stress]
+    keys:
+      anchor: {type: number, description: "a in z = (x - a) / s"}
+      scale: {type: number, min: 0.000001, max: 1000, description: "s"}
+      higher_is_stress: {type: bool, description: "false flips the sign (a lower FV / cost is more stress)"}
+
+  layer_l4:
+    required: [name, kind, cadence, ciks, issuer_groups, metrics, level_weight, change_days, change_tolerance_days,
+               event_window_days, event_items, history_start]
+    keys:
+      name: {type: str}
+      kind: {type: enum, values: [senior]}
+      cadence: {type: enum, values: [per_filing]}
+      note: {type: str}
+      ciks: {type: map_number, min: 1, max: 9999999999, description: "Issuer id -> SEC CIK (companyfacts and submissions)"}
+      issuer_groups: {type: groups, description: "Borrower group -> issuer ids; every issuer in exactly one group (checked by stack/l4_fundamentals.py)"}
+      metrics: {type: l4_metrics}
+      level_weight: {type: number, min: 0, max: 1, description: "Share of a metric's z from the anchor level; the rest is the change over change_days"}
+      change_days: {type: int, min: 90, max: 730, description: "The change compares the metric with its value this many days earlier (4 quarters = 365)"}
+      change_tolerance_days: {type: int, min: 0, max: 45, description: "The earlier period end may be this many days from the target"}
+      event_window_days: {type: int, min: 7, max: 365, description: "f4 counts 8-K filings in this many days up to the as-of date"}
+      event_items: {type: list_str, description: "8-K item codes that f4 counts (scored)"}
+      event_items_unscored: {type: list_str, description: "8-K item codes counted and shown, never scored"}
+      history_start: {type: str, description: "First release date replayed for the band (ISO)"}
+      max_requests_per_second: {type: number, min: 0.1, max: 10, description: "SEC asks for at most 10"}
+
+  l4_metrics:
+    required: []
+    keys:
+      f1: {type: l4_metric, description: "Funding gap"}
+      f2: {type: l4_metric, description: "Debt and leases net of cash / revenue TTM"}
+      f4: {type: l4_metric, description: "8-K debt-event count"}
+
+  l4_metric:
+    required: [anchor, scale]
+    keys:
+      anchor: {type: number, description: "a in z = (x - a) / s"}
+      scale: {type: number, min: 0.000001, max: 1000000, description: "s; also scales the change part"}
 
   composites:
     required: [junior, senior]
