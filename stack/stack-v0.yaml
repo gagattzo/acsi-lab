@@ -1,0 +1,166 @@
+# Stack method, version 0 (Marcello Bardus's Stack, METHODOLOGIES section 4). Data only: validated by stack/config.py
+# against schema/stack_method.yaml. Deliberately not under methods/: the score workflow would try to score it with the
+# v0.x harness.
+#
+# Every cutpoint, window, anchor and weight below is a proposed example, not calibrated; a human freezes them before
+# any backfill is evidence.
+name: stack
+version: 0.0.1
+status: proposed
+description: >
+  Four layers of the capital structure of AI-infrastructure borrowers: L1 equity, L2 traded credit (CDS), L3 private
+  loan marks (BDC filings), L4 fundamentals (SEC filings). Each layer gets a band; Depth counts the layers at Stressed or
+  worse. Junior = L1 and L2 (daily), senior = L3 and L4 (monthly). Proposed examples, not calibrated.
+
+engine:
+  tau: 2.0
+  bands: {normal: 35, watch: 50, stressed: 65, severe: 80}
+  hysteresis: {junior_up_closes: 2, senior_up_releases: 1, down_margin: 4}
+  min_live_share: 0.7
+  staleness: {full_weight_days: 120, zero_weight_days: 180}
+  group_cap: 0.2
+  min_groups_for_stressed: 2
+  # a daily layer's last value counts as live in a composite for this many calendar days (a weekend plus a holiday)
+  junior_carry_days: 4
+
+# Consolidated borrower groups (a parent and its SPVs count as one). Entity ids are the DTCC ids in harness/dtcc.py.
+# TODO: harness/dtcc.py emits only ORCL, CRWV and META. Candidates on the tape with on-the-run 5Y CDS (27 Nov 2026
+# check): SoftBank (SFTBY, RED JQCEFX), Microsoft (MSFT, 5EDDA9), Alphabet (GOOGL, 0C27GT), Amazon (AMZN, 0C5448).
+# Adding them leaves the existing rows unchanged but adds dates to the calendar harness/score.py builds from
+# cds_trades.csv, which moves the v0.x scorecards, so it waits for a maintainer decision. With fewer than 5 groups the
+# 20% cap is infeasible and the layer runs on equal weights (cap_infeasible).
+groups:
+  Oracle: [ORCL]
+  CoreWeave: [CRWV]
+  Meta: [META]
+
+layers:
+  L1:
+    name: Equity
+    kind: junior
+    cadence: daily
+    note: >
+      E1 AI borrowers, E2 AI-HPC miners, E3 exposed-lender spread (Candidate A). Per name, the out-of-sample residual of
+      a rolling 126-session OLS on the factors below, s = minus the sum of the last 5 residuals (falling equity is
+      stress), robust z over 252 sessions. Raw (not residualized) values are published next to it, not scored. Prices:
+      Yahoo Finance via yfinance, research use, not republishable.
+    e1: [CRWV, ORCL, NBIS]
+    e2: [IREN, CIFR, WULF, CORZ, APLD]
+    e3_lenders: [ARCC, OBDC, BXSL, FSK, MAIN]
+    e3_lenders_note: placeholder list, to be replaced by the top 5 BDCs by AI exposure / NAV from the exposure map
+    e3_benchmark: BIZD
+    e3_group: Exposed lenders (E3)
+    leg_weights: {E1: 0.45, E2: 0.25, E3: 0.30}
+    # Hand-entered from Marcello's prior backtest (AGENT-BRIEF 2.3), to be verified against filings before freezing.
+    # NBIS: trading resumed on 21 Oct 2024 after the Yandex suspension; older Yahoo rows are not Nebius.
+    membership:
+      NBIS: ['2024-10-21:']
+      WULF: ['2021-12-14:']
+      CIFR: ['2021-08-30:']
+      APLD: ['2022-04-13:']
+      IREN: ['2021-11-17:']
+      CORZ: [':2025-07-06', '2025-10-31:']
+    price_start: '2018-01-01'
+    factors:
+      equity: [QQQ, SMH]
+      credit: hyg_ief
+      vix: fred
+      rates: [DGS2, DGS10]
+      btc: none
+    fit_sessions: 126
+    fit_min_obs: 120
+    sum_sessions: 5
+    z_window: 252
+    z_min_history: 126
+    z_floor: 0.002
+  L2:
+    name: Traded credit
+    kind: junior
+    cadence: daily
+    note: >
+      Per name, the median of daily medians of on-the-run 5Y CDS spreads over the last 5 sessions, its change over 5
+      sessions and a robust z of that change over the name's own history. Upfront-implied prints use the harness
+      convention (flat hazard, 40% recovery, 4.5% rate) and are labelled.
+    entities: [ORCL, CRWV, META]
+    prints: all
+    window_sessions: 5
+    change_sessions: 5
+    min_prints: 5
+    min_sessions_with_prints: 3
+    max_sessions_since_print: 2
+    z_window: 252
+    z_min_history: 126
+    z_floor_bp: 5
+    min_live_sessions: 126
+  L3:
+    name: Private loan marks
+    kind: senior
+    cadence: monthly
+    note: >
+      Observed BDC book only (SEC BDC Data Sets, soi.tsv). Per borrower group, over facilities the same BDC holds in
+      two consecutive quarterly vintages (funded debt, human sign-off): m1 change in FV / cost, m2 share of principal
+      below 0.95 of cost, m3 share with PIK added since the prior vintage (PIK at origination is shown, not scored),
+      m4 non-accrual not implemented (needs footnotes). m0 FV / cost level is context only (weight 0). Anchors put
+      the Watch edge (Z = 0) at a 1-point mean markdown, 10% breadth, 5% added PIK. Proposed examples, not calibrated.
+    months: ['2025q4', '2026_01', '2026_02', '2026_03', '2026_04', '2026_05', '2026_06', '2026_07', '2026_08', '2026_09',
+             '2026_10']
+    score_rows: signed_off
+    breadth_below: 0.95
+    min_matched_facilities: 1
+    group_weights: matched_principal
+    metric_weights: {m0_level: 0.0, m1_markdown: 0.5, m2_breadth: 0.3, m3_added_pik: 0.2, m4_non_accrual: 0.0}
+    anchors:
+      m0_level: {anchor: 0.97, scale: 0.03, higher_is_stress: false}
+      m1_markdown: {anchor: -0.01, scale: 0.01, higher_is_stress: false}
+      m2_breadth: {anchor: 0.10, scale: 0.10, higher_is_stress: true}
+      m3_added_pik: {anchor: 0.05, scale: 0.05, higher_is_stress: true}
+      m4_non_accrual: {anchor: 0.02, scale: 0.02, higher_is_stress: true}
+  L4:
+    name: Fundamentals
+    kind: senior
+    cadence: per_filing
+    note: >
+      Per issuer from SEC companyfacts and submissions, point in time by filing date: f1 funding gap = (debt due within
+      24 months + capex TTM - operating cash flow TTM) / (cash + undrawn facilities); f2 (debt + finance and operating
+      lease liabilities - cash) / revenue TTM; f3 leverage effect of interest burden (not implemented, never scored);
+      f4 count of 8-K filings with item 2.03 or 2.04 in the last 90 days (1.01 shown, not scored). Each metric:
+      level_weight x (x - anchor) / scale + the rest x (x - x a year earlier) / scale.
+    # Issuer id -> SEC CIK, and borrower groups for the 20% cap and the 2-group rule (a parent and its SPVs are one
+    # group). CoreWeave's proposed purchase of Core Scientific did not close (to verify against filings), so CORZ is
+    # its own group; if it ever closes, map CORZ to CoreWeave from that date.
+    ciks: {CRWV: 1769628, ORCL: 1341439, NBIS: 1513845, IREN: 1878848, CIFR: 1819989, WULF: 1083301, CORZ: 1839341,
+           APLD: 1144879}
+    issuer_groups:
+      CoreWeave: [CRWV]
+      Oracle: [ORCL]
+      Nebius: [NBIS]
+      IREN: [IREN]
+      Cipher Mining: [CIFR]
+      TeraWulf: [WULF]
+      Core Scientific: [CORZ]
+      Applied Digital: [APLD]
+    # Anchors and scales: proposed examples, not calibrated. f1 1.0 = 24-month needs equal to liquidity; f2 3.0 = debt
+    # and leases net of cash of three years of revenue; f4 1 debt-event 8-K per 90 days.
+    metrics:
+      f1: {anchor: 1.0, scale: 1.0}
+      f2: {anchor: 3.0, scale: 2.0}
+      f4: {anchor: 1.0, scale: 1.0}
+    level_weight: 0.5
+    change_days: 365
+    change_tolerance_days: 20
+    event_window_days: 90
+    event_items: ['2.03', '2.04']
+    event_items_unscored: ['1.01']
+    history_start: '2024-01-01'
+    max_requests_per_second: 8
+
+composites:
+  junior:
+    layers: {L1: 0.6, L2: 0.4}
+    note: L2 counts 0 until it has had a live layer value on min_live_sessions sessions (enforced in code; raw files on disk do not count).
+  senior:
+    layers: {L3: 0.5, L4: 0.5}
+  weekly_stack:
+    layers: {L1: 0.2, L2: 0.2, L3: 0.3, L4: 0.3}
+    adopted: false
+    note: Optional weekly Stack Z, only with --weekly. Junior layers averaged over the week.

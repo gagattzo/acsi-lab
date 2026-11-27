@@ -1,0 +1,70 @@
+# Proposal: the Stack L2 eligibility rule (Marcello Bardus's Stack proposal, docs/stack.md) applied to the current index.
+# v0.2-live with one change, on both CDS inputs: an input is set only by at least 5 prints on at least 3 of the last 5
+# sessions, with one in the last 2; the level is the median of the daily medians. Everything else is v0.2-live.
+# What would prove it wrong: it delays the Oracle 330 -> 365 bp move of 20-24 Nov 2026 by more than a session without
+# a clear cut in single-trade influence, or it loses to v0.2-live in either half of the history.
+name: marcellobardus-stack-l2-eligibility
+author: Marcello Bardus (marcellobardus), file written by Claude (Opus 5.5)
+description: 'The Stack L2 eligibility rule applied to the current index, from Marcello Bardus''s Stack proposal: v0.2-live
+  (no ceiling) with each CDS input set only by 5 prints on 3 of the last 5 sessions, one in the last 2, level = median of
+  daily medians. F1 is the CoreWeave 5Y CDS level from DTCC (priced from upfront payments). Loans (F3) and GPU rents (A1,
+  A2) are held at the 24 Nov 2026 edition and count only from that date.'
+dead_band: 15
+ceiling: none
+inputs:
+- id: F1
+  side: financing
+  name: CoreWeave credit (5Y CDS as a live proxy for the 2032 bond spread)
+  source: dtcc:CRWV
+  unit: bp
+  calm: 500
+  distress: 1000
+  max_carry_days: 10
+  window_sessions: 5
+  min_prints: 5
+  min_sessions_with_prints: 3
+  max_days_since_print: 2
+  level: median_of_daily_medians
+- id: F2
+  side: financing
+  name: Oracle 5Y CDS
+  source: dtcc:ORCL
+  unit: bp
+  calm: 100
+  distress: 1000
+  max_carry_days: 10
+  window_sessions: 5
+  min_prints: 5
+  min_sessions_with_prints: 3
+  max_days_since_print: 2
+  level: median_of_daily_medians
+- id: F3
+  side: financing
+  name: AI data-center construction loans, secondary price (median of press-reported prints)
+  source: fixed
+  source_id: press
+  value: 90
+  as_of: 2026-11-24
+  unit: cents
+  calm: 98
+  distress: 80
+- id: A1
+  side: asset
+  name: H100 rental index (Silicon Data SDH100RT), held at the edition
+  source: fixed
+  source_id: silicondata
+  value: 3.1
+  as_of: 2026-11-24
+  unit: usd_per_gpu_hour
+  calm: 3.56
+  distress: 2.06
+- id: A2
+  side: asset
+  name: Blackwell B200 rent trend over about half a year (Silicon Data), held at the edition
+  source: fixed
+  source_id: silicondata
+  value: 29.5
+  as_of: 2026-11-24
+  unit: percent
+  calm: -8
+  distress: -40

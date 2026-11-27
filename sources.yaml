@@ -98,3 +98,11 @@ sources:
     redistributable: true
     terms: Our own publication
     grade: B
+  - id: yahoo
+    name: Yahoo Finance via yfinance (end-of-day adjusted closes)
+    url: https://finance.yahoo.com
+    what: Stack L1 equity prices (AI borrowers, AI-HPC miners, BDCs, QQQ, SMH, HYG, IEF); FRED DGS2, DGS10 and VIXCLS are the other L1 factors
+    updates: daily
+    redistributable: false
+    terms: Research use, not republishable. Fetched at run time into data/raw/prices (gitignored), never stored here. An official series needs a licensed or exchange end-of-day feed.
+    grade: D

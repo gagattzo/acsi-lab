@@ -30,6 +30,9 @@ python -m pytest -q tests                          # every known quirk of the da
 python harness/score.py methods/v0.1-live.yaml     # score a method
 ```
 
+The Stack index (`stack/`) reads these canonical tables for its L2 layer and adds SEC, FRED and price sources with their
+own availability rules; its sources, caches and hashes are described in [docs/stack.md](docs/stack.md).
+
 ## Why each guard exists
 
 | Guard | What it stops |

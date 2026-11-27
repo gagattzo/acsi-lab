@@ -3,3 +3,16 @@ __pycache__/
 proposed/
 *.pyc
 .pytest_cache/
+# hl/ proxy basket: logs, locks, local config and env files with keys never go in git
+hl/config.yaml
+*.env
+.env*
+*.jsonl.lock
+*.lock
+logs/
+*.pkl
+research/hl-proxy-basket/*.csv
+research/hl-proxy-basket/*.pkl
+research/hl-proxy-basket/junior_research.json
+.venv/
+research/hl-proxy-basket/weekly.json

@@ -61,6 +61,9 @@ python harness/score.py methods/<yours>.yaml --baseline methods/v0.1-live.yaml
 
 How the data flows, and why each guard exists: [DATA.md](DATA.md).
 
+The Stack index (a proposal, not the live method): four layers of the AI borrowers' capital structure, each with its own
+band, built with `python -m stack.build`. How to run it, what each layer measures and what is still a stub: [docs/stack.md](docs/stack.md).
+
 ## Statuses
 
 `proposed` → `agent at work` → `scored` → `adopted`, or `refuted` / `dead` (the graveyard, kept public on purpose). A bot sets them from titles, comments and CI; nobody needs to be added to take part. The only human step is merging a method that wins on the scorecard.
