@@ -10,17 +10,24 @@ Two scores from 0 to 100. Debt stress comes from CoreWeave credit, Oracle 5-year
 
 ## Where it stands
 
-The baseline, `methods/v0.1-live.yaml`, is the v0.1 gap index reprinted daily. Only the two CDS inputs move. F1 is a
-**model-implied** CoreWeave level, because CoreWeave has no quoted 5-year spread on the tape, so it is computed from
-upfront payments. Loans and GPU rents are **held at the 24 Nov 2026 edition** and count only from that date. That makes
-the year of history the financing side (F1 and F2) alone. It is not yet a live debt-versus-GPU measure.
+Since 27 Nov 2026 the live default is **method v0.2** (`methods/v0.2-live.yaml`): v0.1 with no ceiling. Under v0.1 a
+score stopped at 100 at the distress line, and CoreWeave's 5Y CDS has been past its 1,000 bp line on 24 days since
+14 Oct 2026, so the index could not show how far past distress it went. v0.2 lets it keep rising (CoreWeave at 1,373 bp
+scores 174.5). Same inputs, anchors and sources. Gap on 25 Nov 2026: **+67.8 on v0.2, +42.9 on v0.1**. Both are
+scored below and on the scoreboard. It was adopted without waiting for the forward test because it changes no fitted
+parameter; the forward test still runs.
 
-Scored on 262 trading days (24 Oct 2025 to 25 Nov 2026), daily changes:
+The rest is as before. Only the two CDS inputs move daily. F1 is a **model-implied** CoreWeave level, because CoreWeave
+has no quoted 5-year spread on the tape, so it is computed from upfront payments. Loans and GPU rents are **held at the
+24 Nov 2026 edition** and count only from that date. That makes the year of history the financing side (F1 and F2)
+alone. It is not yet a live debt-versus-GPU measure.
+
+v0.1 scored on 262 trading days (24 Oct 2025 to 25 Nov 2026), daily changes (v0.2 in brackets):
 
 | Test | Baseline | Read |
 | --- | --- | --- |
-| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 | Broad markets explain under 4% of daily moves |
-| Most a single trade moved it | 21.2 points (p95 6.8) | Far too much: on a quiet day one CoreWeave print sets the level alone |
+| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 (0.055 / 0.072 / 0.048 / 0.078) | Broad markets explain under 8% of daily moves |
+| Most a single trade moved it | 21.2 points, p95 6.8 (21.2, p95 7.0) | Far too much: on a quiet day one CoreWeave print sets the level alone |
 | Days resting on an input with fewer than 3 trades | 77% | The main weakness |
 | Days a level is set by a single trade | 32% | |
 | Weekdays with a same-day CoreWeave CDS trade | 63% | Oracle: 97% |

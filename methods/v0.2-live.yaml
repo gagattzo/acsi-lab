@@ -1,0 +1,60 @@
+# ACSI method v0.2, adopted by the maintainers on 27 Nov 2026 as the live default.
+# One change from v0.1-live: the scale no longer stops at the distress line (ceiling: none). CoreWeave's 5Y CDS has
+# traded above its 1,000 bp distress anchor on 24 days since 14 Oct 2026; under v0.1 it scored 100 on all of them,
+# so the index could not show how far past distress it went, or react to further widening. Anchors, inputs and
+# sources are unchanged. This is not a tuned parameter, so it was adopted without waiting for the forward test;
+# both versions are scored side by side and the forward test still runs.
+name: v0.2-live
+author: aistress.si
+description: 'ACSI method v0.2, daily reprint: v0.1-live with no ceiling. Scores are 0 at the calm anchor and 100 at the distress
+  line, and keep rising past it. F1 is the CoreWeave 5Y CDS level from DTCC (priced from upfront payments), live and at the
+  weekly close. Loans (F3) and GPU rents (A1, A2) are held at the 24 Nov 2026 edition and count only from that date.'
+dead_band: 15
+ceiling: none
+inputs:
+- id: F1
+  side: financing
+  name: CoreWeave credit (5Y CDS as a live proxy for the 2032 bond spread)
+  source: dtcc:CRWV
+  unit: bp
+  calm: 500
+  distress: 1000
+  max_carry_days: 10
+- id: F2
+  side: financing
+  name: Oracle 5Y CDS
+  source: dtcc:ORCL
+  unit: bp
+  calm: 100
+  distress: 1000
+  max_carry_days: 10
+- id: F3
+  side: financing
+  name: AI data-center construction loans, secondary price (median of press-reported prints)
+  source: fixed
+  source_id: press
+  value: 90
+  as_of: 2026-11-24
+  unit: cents
+  calm: 98
+  distress: 80
+- id: A1
+  side: asset
+  name: H100 rental index (Silicon Data SDH100RT), held at the edition
+  source: fixed
+  source_id: silicondata
+  value: 3.1
+  as_of: 2026-11-24
+  unit: usd_per_gpu_hour
+  calm: 3.56
+  distress: 2.06
+- id: A2
+  side: asset
+  name: Blackwell B200 rent trend over about half a year (Silicon Data), held at the edition
+  source: fixed
+  source_id: silicondata
+  value: 29.5
+  as_of: 2026-11-24
+  unit: percent
+  calm: -8
+  distress: -40

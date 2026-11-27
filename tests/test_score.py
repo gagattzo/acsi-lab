@@ -102,3 +102,17 @@ def test_multiple_regression_recovers_an_exact_fit():
     X = [(i, (i * 7) % 5) for i in range(20)]
     y = [2 * a - 3 * b + 1 for a, b in X]
     assert abs(score.r2_multi(y, X) - 1.0) < 1e-9
+
+
+def test_no_ceiling_lets_scores_pass_the_distress_line():
+    t = tape([[1373]] * 10, [[373, 373, 373]] * 10)
+    capped = score.build(method(), t, CAL)[-1]
+    open_ = score.build({**method(), 'ceiling': 'none'}, t, CAL)[-1]
+    assert capped['F'] == (100 + 100 * 273 / 900) / 2
+    assert abs(open_['F'] - (100 * 873 / 500 + 100 * 273 / 900) / 2) < 1e-9   # CoreWeave 1,373 bp scores 174.6
+    assert score.build(method(), t, CAL)[-1]['F'] == capped['F']             # the default is still the v0.1 ceiling
+
+
+def test_floor_stays_at_zero_without_a_ceiling():
+    t = tape([[300]] * 10, [[50, 50, 50]] * 10)
+    assert score.build({**method(), 'ceiling': 'none'}, t, CAL)[-1]['F'] == 0

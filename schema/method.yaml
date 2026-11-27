@@ -1,6 +1,6 @@
 # What a method file may contain. Anything else is rejected by harness/score.py: methods combine pipeline features,
 # they do not run code. A new feature needs a loader, a schema, tests and an entry here (one reviewed pull request).
-top: [name, author, description, dead_band, inputs, registered]
+top: [name, author, description, dead_band, ceiling, inputs, registered]
 required_top: [name, inputs]
 input: [id, side, name, source, source_id, unit, value, as_of, calm, distress, max_carry_days, min_trades, pool_days,
         window_sessions, min_prints, min_sessions_with_prints, max_days_since_print, level_sessions, level, prints, note]
@@ -9,6 +9,7 @@ sources:
   dtcc: "dtcc:<ENTITY> — on-the-run 5Y CDS from data/canonical/cds_trades.csv; entities: ORCL, CRWV, META"
   fixed: "a value held from a dated edition: needs value and as_of. It counts only on and after as_of, never before"
 features:
+  ceiling: "top-level, 100 (default: scores stop at the distress line) or none (no ceiling: 1,373 bp on 500/1,000 anchors scores 174.5)"
   window_sessions: "integer 1-10: sessions in the window, today included (pool_days is the older name; use one)"
   min_prints: "integer 1-50: prints needed in the window (min_trades is the older name)"
   min_sessions_with_prints: "integer 1-10: sessions in the window that must have at least one print"

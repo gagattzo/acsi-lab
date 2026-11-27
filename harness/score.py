@@ -85,6 +85,8 @@ ENUM_FEATURES = {'prints': ('all', 'quoted_first'), 'level': ('median', 'median_
 def check_method(m):
     spec = yaml.safe_load(open(ROOT / 'schema' / 'method.yaml'))
     errs = [f'unknown top-level key: {k}' for k in m if k not in spec['top']]
+    if 'ceiling' in m and str(m['ceiling']).lower() not in ('none', '100'):
+        errs.append('ceiling must be 100 or none')
     errs += [f'missing top-level key: {k}' for k in spec['required_top'] if k not in m]
     for i in m.get('inputs', []):
         errs += [f"input {i.get('id')}: unknown key {k}" for k in i if k not in spec['input']]
@@ -118,8 +120,13 @@ def check_method(m):
     return m
 
 
+CEILING = [100.0]  # set per method by build(): 100 (v0.1) or None (no ceiling, v0.2)
+
+
 def score(x, calm, distress):
-    return max(0.0, min(100.0, 100.0 * (x - calm) / (distress - calm)))
+    """0 at calm, 100 at the distress line. Never below 0. Above 100 only when the method has no ceiling."""
+    v = max(0.0, 100.0 * (x - calm) / (distress - calm))
+    return v if CEILING[0] is None else min(CEILING[0], v)
 
 
 def ols(y, x):
@@ -172,6 +179,7 @@ def build(method, trades, cal):
     today), carried (last level, within max_carry_days), held_from_edition (a fixed value on or after its as_of date)
     or missing. The gap needs two financing inputs and one asset input; without the asset side the day is scored on
     the financing side alone (basis = financing)."""
+    CEILING[0] = None if str(method.get('ceiling', 100)).lower() in ('none', 'null', 'off') else float(method.get('ceiling', 100))
     ins = method['inputs']
     last, out = {}, []
     for di, d in enumerate(cal):
