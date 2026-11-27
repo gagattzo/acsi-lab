@@ -13,7 +13,10 @@ Groups: names map to borrower groups (method `groups`); a group's z is the mean 
 Z = sum of capped group weights x group z (20% cap, equal weights and cap_infeasible below 5 groups). The band is
 replayed over every session up to the as-of date with junior hysteresis and the 2-group rule.
 
-L2 carries weight 0 in every composite until min_sessions_archived sessions are archived (enforced here: `scored`).
+Session gate (enforced here: `scored`). L2 carries weight 0 in every composite until it has had a live layer value
+(at least one eligible name with a z) on min_live_sessions sessions. Raw DTCC files on disk do not count: anyone can
+download a year of them after the fact, so a gate on files would open the day the archive is backfilled. Both counts
+are reported (gate.sessions_live, gate.raw_files).
 Upfront-implied spreads follow the harness convention (flat hazard, 40% recovery, 4.5% rate) and are labelled.
 No lookahead: rows dated after the as-of date and sessions after it are never read.
 
@@ -154,16 +157,10 @@ def leave_one_out(daily, i, W):
 
 # --- the layer -------------------------------------------------------------------------------------------------------
 
-def layer_series(trades, sessions, method):
-    """Per-session layer values for every session (oldest first) and per-name series."""
-    p = method['layers']['L2']
-    eng = method['engine']
-    cut = config_cuts(method)
-    tau = eng['tau']
-    owner = {e: g for g, es in method['groups'].items() for e in es}
-    ents = p['entities']
+def prints_by_name(trades, sessions, entities):
+    """({entity: {session: [(spread_bp, kind)]}}, trades on dates that are not sessions)."""
     sset = set(sessions)
-    by = {e: {} for e in ents}
+    by = {e: {} for e in entities}
     outside = 0
     for r in trades:
         if r['entity'] not in by:
@@ -172,24 +169,46 @@ def layer_series(trades, sessions, method):
             outside += 1
             continue
         by[r['entity']].setdefault(r['date'], []).append((r['spread_bp'], r['kind']))
+    return by, outside
+
+
+def combine(fresh, method):
+    """One session's layer from its fresh names. fresh: [(entity, z)]. Returns (groups, cap weights or None, Z or
+    None): group z = mean of its names' z, Z = capped group weights x group z."""
+    eng = method['engine']
+    cut, tau = config_cuts(method), eng['tau']
+    owner = {e: g for g, es in method['groups'].items() for e in es}
+    gz = {}
+    for e, z in fresh:
+        gz.setdefault(owner[e], []).append((e, z))
+    groups = {g: {'names': [e for e, _ in v], 'z': sum(z for _, z in v) / len(v)} for g, v in gz.items()}
+    for g in groups.values():
+        g['level'] = engine.logistic(g['z'], tau)
+        g['band'] = engine.BANDS[engine.raw_band(g['level'], cut)]
+    if not groups:
+        return groups, None, None
+    capw = engine.cap_weights({g: 1.0 for g in groups}, eng['group_cap'])
+    return groups, capw, sum(capw['weights'][g] * groups[g]['z'] for g in groups)
+
+
+def layer_series(trades, sessions, method):
+    """Per-session layer values for every session (oldest first) and per-name series."""
+    p = method['layers']['L2']
+    eng = method['engine']
+    cut = config_cuts(method)
+    tau = eng['tau']
+    ents = p['entities']
+    by, outside = prints_by_name(trades, sessions, ents)
     names, dailies = {}, {}
     for e in ents:
         names[e], dailies[e] = name_series(by[e], sessions, p)
-    series = []
+    series, live_so_far = [], 0
     for i, d in enumerate(sessions):
-        gz = {}
-        for e in ents:
-            r = names[e][i]
-            if r['status'] == 'fresh':
-                gz.setdefault(owner[e], []).append((e, r['z']))
-        groups = {g: {'names': [e for e, _ in v], 'z': sum(z for _, z in v) / len(v)} for g, v in gz.items()}
-        for g in groups.values():
-            g['level'] = engine.logistic(g['z'], tau)
-            g['band'] = engine.BANDS[engine.raw_band(g['level'], cut)]
-        pt = {'session': d, 'sessions_archived': i + 1, 'scored': i + 1 >= p['min_sessions_archived'], 'groups': groups}
+        groups, capw, Z = combine([(e, names[e][i]['z']) for e in ents if names[e][i]['status'] == 'fresh'], method)
+        live_so_far += 1 if groups else 0
+        pt = {'session': d, 'raw_files': i + 1, 'sessions_live': live_so_far,
+              'scored': live_so_far >= p['min_live_sessions'], 'groups': groups}
         if groups:
-            capw = engine.cap_weights({g: 1.0 for g in groups}, eng['group_cap'])
-            Z = sum(capw['weights'][g] * groups[g]['z'] for g in groups)
             capb, why, hot = engine.two_group_cap({g: v['level'] for g, v in groups.items()}, cut, eng['min_groups_for_stressed'])
             lv = engine.logistic(Z, tau)
             pt.update(status='fresh', Z=Z, level=lv, cap=capb, cap_reason=why, groups_stressed=hot, weights=capw)
@@ -207,24 +226,35 @@ def _r(x, k=2):
     return None if x is None else round(x, k)
 
 
+def _gate(p, live, files, met):
+    return {'min_live_sessions': p['min_live_sessions'], 'sessions_live': live, 'raw_files': files, 'met': met,
+            'counts': 'sessions with a live layer value from eligible names; raw files on disk do not count'}
+
+
+def _role(gate):
+    if gate['met']:
+        return 'scored sleeve'
+    return (f"observation only: weight 0 in every composite until L2 has a live value on {gate['min_live_sessions']} "
+            f"sessions ({gate['sessions_live']} so far; {gate['raw_files']} raw files on disk, which do not count)")
+
+
 def snapshot(as_of, trades, sessions, method):
     """The L2 result for as_of (dict). `_series` holds the per-session points for composites (not published)."""
     p = method['layers']['L2']
     sessions = [s for s in sessions if s <= as_of]
     trades = [t for t in trades if t['date'] <= as_of]
-    base = {'layer': 'L2', 'name': p['name'], 'kind': 'junior', 'as_of': as_of, 'convention': CONVENTION,
-            'prints': p.get('prints', 'all'), 'sessions_archived': len(sessions),
-            'gate': {'min_sessions_archived': p['min_sessions_archived'], 'met': len(sessions) >= p['min_sessions_archived']}}
-    base['scored'] = base['gate']['met']
-    base['role'] = 'scored sleeve' if base['scored'] else (
-        f"observation only: weight 0 in every composite until {p['min_sessions_archived']} sessions are archived "
-        f"({len(sessions)} so far)")
+    base = {'layer': 'L2', 'name': p['name'], 'kind': 'junior', 'build_date': as_of, 'as_of': None,
+            'convention': CONVENTION, 'prints': p.get('prints', 'all'), 'sessions_archived': len(sessions)}
     if not sessions:
-        return dict(base, status='unavailable', reason='no DTCC sessions on or before the as-of date', session=None,
+        gate = _gate(p, 0, 0, False)
+        return dict(base, gate=gate, scored=False, role=_role(gate), status='unavailable',
+                    reason='no DTCC sessions on or before the as-of date', session=None,
                     available=None, Z=None, level=None, published=None, band=None, _series=[])
     series, names, dailies, outside = layer_series(trades, sessions, method)
     i = len(sessions) - 1
     pt = series[-1]
+    gate = _gate(p, pt['sessions_live'], pt['raw_files'], pt['scored'])
+    base.update(gate=gate, scored=gate['met'], role=_role(gate))
     d = sessions[-1]
     status = pt['status'] if d == as_of or pt['status'] != 'fresh' else 'carried'
     W = p['window_sessions']
@@ -259,16 +289,21 @@ def snapshot(as_of, trades, sessions, method):
         for g, v in pt['groups'].items():
             attribution[g] = {'weight': _r(w['weights'][g], 4), 'contribution': _r(w['weights'][g] * v['z'], 3),
                               'uncapped_weight': _r(w['uncapped'][g], 4), 'uncapped_contribution': _r(w['uncapped'][g] * v['z'], 3)}
-    out = dict(base, status=status, session=d, available=d, Z=_r(pt['Z'], 3), level=_r(pt['level']),
+    has = pt['Z'] is not None
+    out = dict(base, status=status, session=d, as_of=d if has else None, available=d if has else None,
+               Z=_r(pt['Z'], 3), level=_r(pt['level']),
                published=engine.published(pt['level']), raw_band=pt['raw_band'], band=pt['band'],
                band_status='fresh' if status == 'fresh' else 'held (no fresh value: the band cannot move)',
                band_moved=pt['band_moved'], band_reason=pt['band_reason'],
                two_group={'cap': pt['cap'], 'reason': pt['cap_reason'], 'groups_stressed_or_worse': pt['groups_stressed']},
                cap_infeasible=bool(pt['weights'] and pt['weights']['cap_infeasible']),
                groups_live=len(pt['groups']), groups_configured=len({owner[e] for e in p['entities']}),
-               eligible_sessions=sum(1 for s in series if s['status'] == 'fresh'),
                groups=groups, attribution=attribution, names=per, trades_outside_sessions=outside,
-               _series=[{'session': s['session'], 'Z': s['Z'], 'status': s['status'], 'scored': s['scored']} for s in series])
+               _series=[{'session': s['session'], 'known': s['session'], 'Z': s['Z'], 'level': s['level'],
+                         'status': s['status'], 'scored': s['scored'], 'sessions_live': s['sessions_live'],
+                         'band': s['band'], 'raw_band': s['raw_band'], 'band_moved': s['band_moved'],
+                         'groups_stressed': s['groups_stressed'],
+                         'group_z': {g: v['z'] for g, v in s['groups'].items()}} for s in series])
     if pt['status'] != 'fresh':
         out['reason'] = 'no eligible name with enough history on this session'
     return out
@@ -279,8 +314,8 @@ def compute(as_of, method, ctx):
     root = pathlib.Path(ctx.get('root') or ROOT)
     tpath = root / 'data' / 'canonical' / 'cds_trades.csv'
     if not tpath.exists():
-        return ({'layer': 'L2', 'name': method['layers']['L2']['name'], 'kind': 'junior', 'as_of': as_of,
-                 'status': 'unavailable', 'reason': 'data/canonical/cds_trades.csv missing: run python harness/dtcc.py',
+        return ({'layer': 'L2', 'name': method['layers']['L2']['name'], 'kind': 'junior', 'build_date': as_of,
+                 'as_of': None, 'status': 'unavailable', 'reason': 'data/canonical/cds_trades.csv missing: run python harness/dtcc.py',
                  'available': None, 'Z': None, 'band': None, '_series': []}, [])
     trades = load_trades(tpath, as_of)
     start = min((t['date'] for t in trades), default=None)

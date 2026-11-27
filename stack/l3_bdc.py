@@ -34,7 +34,10 @@ when it is within 0.5-1.5x of cost (bdc_exposure's rule), else by cost, times th
 Each metric gets an anchor z (proposed examples in stack/stack-v0.yaml), a group's z is the weighted mean of its
 metrics' z, the layer Z is the capped sum over groups (20% cap; equal weights and cap_infeasible below 5 groups), the
 2-group rule caps the band at Watch, and the band is replayed with senior hysteresis over monthly release points
-(each month end, plus the as-of date). A point is fresh only if a scored filing arrived since the previous point.
+(each month end, plus the as-of date). L3 publishes at month ends, the cadence of the SEC's monthly file: a month-end
+point is fresh only if a scored filing arrived since the previous one; the as-of point between two month ends carries
+the last published value (its weight factor follows staleness), so a filing waits for the next month end and an
+edition built mid-month equals any later replay of that day.
 
 Column labels: files before 2026_08 carry cost and fair value under "Adjusted cost basis" and "Initial fair value of
 Investment" (the standard labels are present but empty). Checked against the 31 Dec 2025 comparatives in 2026_08,
@@ -499,7 +502,8 @@ def evaluate(T, rows_by_acc, filings, method):
     base_all = sum(x['weight_usd'] for x in pairs)
     wf = (sum(x['w'] for x in pairs) / base_all) if base_all else 0.0
     pt = {'session': T, 'pairs': pairs, 'tally': tally, 'groups': gm, 'scored_groups': sorted(scored),
-          'weight_factor': wf, 'latest_filed': max((v['latest_filed'] for v in scored.values()), default=None)}
+          'weight_factor': wf, 'latest_filed': max((v['latest_filed'] for v in scored.values()), default=None),
+          'latest_period': max((max(v['periods']) for v in scored.values()), default=None)}
     if not scored:
         st = 'stale' if pairs and wf == 0 else 'unavailable'
         return dict(pt, status=st, Z=None, level=None, cap=None, cap_reason=None, groups_stressed=[], weights=None)
@@ -531,21 +535,54 @@ def release_points(filings, as_of):
     return out
 
 
+def is_month_end(d):
+    return (dt.date.fromisoformat(d) + dt.timedelta(days=1)).day == 1
+
+
+def month_end_of(d):
+    x = dt.date.fromisoformat(d)
+    return (dt.date(x.year + (x.month == 12), x.month % 12 + 1, 1) - dt.timedelta(days=1)).isoformat()
+
+
+def carried_weight_factor(last, T, eng):
+    """Principal-weighted staleness on T of the vintages behind a carried value (its own pairs, not newer filings)."""
+    st = eng['staleness']
+    base = sum(x['weight_usd'] for x in last['pairs'])
+    if not base:
+        return 0.0
+    return sum(x['weight_usd'] * engine.staleness_weight((dt.date.fromisoformat(T) - dt.date.fromisoformat(x['period'])).days,
+                                                         st['full_weight_days'], st['zero_weight_days'])
+               for x in last['pairs']) / base
+
+
 def layer_series(rows_by_acc, filings, method, as_of):
-    """One point per release date (oldest first), with the band replayed under senior hysteresis. A point with no new
-    scored filing since the previous point holds the last fresh value (carried; stale once its staleness weight is
-    0): only its weight_factor moves, never the value."""
+    """One point per release date (oldest first), with the band replayed under senior hysteresis.
+
+    L3 publishes at month ends (the cadence of the SEC's monthly BDC file). A month-end point is fresh when a scored
+    filing arrived since the previous point. Any other point (no new filing, or the build date between two month ends)
+    holds the last published value (carried; stale once its staleness weight is 0): only its weight_factor moves, never
+    the value, and a filing made after the last month end waits for the next one. So an edition built mid-month equals
+    what any later replay shows for that day."""
     eng = method['engine']
     pts, prev, last = [], None, None
     for T in release_points(filings, as_of):
         pt = evaluate(T, rows_by_acc, filings, method)
-        new = pt['status'] == 'fresh' and (prev is None or pt['latest_filed'] > prev)
+        release = is_month_end(T)
+        new = release and pt['status'] == 'fresh' and (prev is None or pt['latest_filed'] > prev)
         if new:
             last = pt
         elif last is not None:
-            pt = dict(last, session=T, status='stale' if pt['weight_factor'] <= 0 else 'carried',
-                      weight_factor=pt['weight_factor'], tally=pt['tally'])
-        prev = T
+            wf = carried_weight_factor(last, T, eng)
+            pt = dict(last, session=T, status='stale' if wf <= 0 else 'carried', weight_factor=wf, tally=pt['tally'])
+        else:
+            waiting = pt['status'] == 'fresh'
+            pt = dict(pt, status='unavailable' if waiting else pt['status'], Z=None, level=None, cap=None,
+                      cap_reason=None, groups_stressed=[], weights=None, groups={}, scored_groups=[],
+                      latest_filed=None, latest_period=None,
+                      not_released=(f'not released yet: L3 publishes at month ends (next release point '
+                                    f'{month_end_of(T)})' if waiting else None))
+        if release:
+            prev = T
         pts.append(pt)
     h = eng['hysteresis']
     bands = engine.replay_bands(pts, 'senior', config_cuts(method), up_closes=h['junior_up_closes'],
@@ -715,7 +752,7 @@ def snapshot(as_of, rows_by_acc, filings, method):
     filings = [f for f in filings if f['filed'] <= as_of]
     keep = {f['accession'] for f in filings}
     rows_by_acc = {a: v for a, v in rows_by_acc.items() if a in keep}
-    base = {'layer': 'L3', 'name': p['name'], 'kind': 'senior', 'as_of': as_of, 'scope': SCOPE,
+    base = {'layer': 'L3', 'name': p['name'], 'kind': 'senior', 'build_date': as_of, 'as_of': None, 'scope': SCOPE,
             'score_rows': p['score_rows'], 'metrics': {'m4_non_accrual': M4_STUB}}
     if p['score_rows'] != 'signed_off':
         base['warning'] = 'comparison run: named candidates without a human sign-off are scored'
@@ -747,8 +784,12 @@ def snapshot(as_of, rows_by_acc, filings, method):
     match['key'] = ('holder CIK + borrower group + instrument class + maturity + spread (or fixed rate) + letters of '
                     'the obligor text; fallbacks: terms only, then text only, each when unique on both sides')
     status = pt['status']
-    out = dict(base, status=status, session=pt['session'], release=last_fresh['session'] if last_fresh else None,
-               available=pt['latest_filed'], Z=_r(pt['Z'], 3), level=_r(pt['level'], 2),
+    out = dict(base, status=status, session=pt['session'], as_of=pt.get('latest_period'),
+               available=pt['latest_filed'], release_point=last_fresh['session'] if last_fresh else None,
+               dates_note=('as_of: latest period end (vintage) of the scored facilities; available: latest filing date '
+                           'among them; release_point: the monthly release point at which this value was first '
+                           'published (on or after available); session: the build point'),
+               Z=_r(pt['Z'], 3), level=_r(pt['level'], 2),
                published=engine.published(pt['level']), raw_band=pt.get('raw_band'), band=pt.get('band'),
                band_status='fresh' if status == 'fresh' else 'held (no new release: the band cannot move)',
                band_moved=pt.get('band_moved'), band_reason=pt.get('band_reason'),
@@ -759,12 +800,16 @@ def snapshot(as_of, rows_by_acc, filings, method):
                cap_infeasible=bool(pt.get('weights') and pt['weights']['cap_infeasible']),
                groups_live=len(pt['scored_groups']), groups=groups, attribution=attribution, match=match,
                group_note='group values are layer attribution over the observed BDC book, not a credit view of the borrower',
-               _series=[{'session': x['session'], 'Z': x['Z'], 'status': x['status'],
-                         'weight_factor': x['weight_factor']} for x in pts])
+               _series=[{'session': x['session'], 'known': x['session'], 'Z': x['Z'], 'level': x['level'],
+                         'status': x['status'], 'weight_factor': x['weight_factor'], 'band': x.get('band'),
+                         'raw_band': x.get('raw_band'), 'band_moved': x.get('band_moved'),
+                         'groups_stressed': x.get('groups_stressed') or []} for x in pts])
     if status != 'fresh':
         out['reason'] = {'carried': 'no new scored filing since the previous release point',
                          'stale': 'every matched vintage is older than the staleness limit',
                          'unavailable': 'no matched, signed-off, funded facility in consecutive vintages'}.get(status)
+        if pt.get('not_released'):
+            out['reason'] = pt['not_released']
     return out
 
 
@@ -784,11 +829,12 @@ def compute(as_of, method, ctx):
                and not m['status'].startswith('after')]
     if not filings:
         errs = '; '.join(f"{m['month']}: {m.get('error') or m['status']}" for m in missing)
-        return ({'layer': 'L3', 'name': p['name'], 'kind': 'senior', 'as_of': as_of, 'scope': SCOPE,
+        return ({'layer': 'L3', 'name': p['name'], 'kind': 'senior', 'build_date': as_of, 'as_of': None, 'scope': SCOPE,
                  'status': 'unavailable', 'reason': f'no SEC BDC file available ({errs})', 'months': months,
                  'available': None, 'Z': None, 'band': None, 'metrics': {'m4_non_accrual': M4_STUB}, '_series': []}, inputs)
     res = snapshot(as_of, rows_by_acc, filings, method)
-    res['months'] = months
+    # a zip read from the cache and one downloaded on this run are the same input (sha256 shown): same edition
+    res['months'] = [dict(m, status='cached') if m['status'] in ('downloaded', 'refreshed') else m for m in months]
     if missing:
         res['missing_months'] = [m['month'] for m in missing]
     last = max(f['filed'] for f in filings)

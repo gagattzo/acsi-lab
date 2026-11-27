@@ -739,7 +739,7 @@ def snapshot(as_of, prices, fred, method):
     """The L1 result for as_of. `_series` holds the per-session points for composites (not published)."""
     p = method['layers']['L1']
     membership, _ = prepare(p)
-    base = {'layer': 'L1', 'name': p['name'], 'kind': 'junior', 'as_of': as_of,
+    base = {'layer': 'L1', 'name': p['name'], 'kind': 'junior', 'build_date': as_of, 'as_of': None,
             'sources': {'prices': SOURCE_PRICES, 'factors_fred': SOURCE_FRED},
             'availability': ('equity closes available the same day; a FRED observation dated t on the next weekday; '
                              'the residual for t only once every factor for t is available'),
@@ -799,7 +799,14 @@ def snapshot(as_of, prices, fred, method):
             rec['label'] = 'effectively Oracle alone on this session'
         legs[leg] = rec
     lv = pt['level']
-    out = dict(base, status=status, session=pt['session'], available=pt['available'],
+    fac_ret = {t: ret_col(prices.get(t, {}), sessions) for t in p['factors']['equity']}
+    leg_z = {leg: [nm for nm in names if nm['leg'] == leg] for leg in LEGS}
+
+    def _mean(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    out = dict(base, status=status, session=pt['session'], as_of=pt['session'], available=pt['available'],
                Z=_r(pt['Z'], 3), level=_r(lv, 2), published=engine.published(lv),
                Z_raw=_r(pt['Z_raw'], 3), level_raw=_r(engine.logistic(pt['Z_raw'], method['engine']['tau']), 2) if pt['Z_raw'] is not None else None,
                raw_note='Z_raw: the same layer on raw (not residualized) returns; shown, not scored',
@@ -813,8 +820,14 @@ def snapshot(as_of, prices, fred, method):
                first_session_with_value=next((s['session'] for s in series if s['status'] == 'fresh'), None),
                legs=legs, groups=groups, attribution=attribution, names=per,
                # up to the last session with a value: later sessions are still waiting for their factors
-               _series=[{'session': s['session'], 'available': s['available'], 'Z': s['Z'], 'status': s['status']}
-                        for s in series[:i + 1]])
+               _series=[{'session': s['session'], 'available': s['available'],
+                         'known': s['available'] or s['session'], 'Z': s['Z'], 'level': s['level'],
+                         'status': s['status'], 'band': s.get('band'), 'raw_band': s.get('raw_band'),
+                         'band_moved': s.get('band_moved'), 'groups_stressed': s.get('groups_stressed') or [],
+                         'legs_z': {leg: _mean(nm['sc']['z'][k] for nm in leg_z[leg]) for leg in LEGS},
+                         'legs_z_raw': {leg: _mean(nm['sc']['z_raw'][k] for nm in leg_z[leg]) for leg in LEGS},
+                         'factor_returns': {t: c[k] for t, c in fac_ret.items()}}
+                        for k, s in enumerate(series[:i + 1])])
     if pt['status'] != 'fresh':
         out['reason'] = (f"live leg weight {pt['live_leg_share']:.0%} of target, needs "
                          f"{method['engine']['min_live_share']:.0%}")
@@ -823,7 +836,7 @@ def snapshot(as_of, prices, fred, method):
 
 
 def _stub(as_of, p, status, reason):
-    return {'layer': 'L1', 'name': p['name'], 'kind': 'junior', 'as_of': as_of, 'status': status, 'reason': reason,
+    return {'layer': 'L1', 'name': p['name'], 'kind': 'junior', 'build_date': as_of, 'as_of': None, 'status': status, 'reason': reason,
             'available': None, 'Z': None, 'level': None, 'published': None, 'band': None, '_series': []}
 
 

@@ -25,7 +25,7 @@ def weekdays(n, start='2026-01-05'):
 def method(**over):
     m = copy.deepcopy(BASE)
     m['groups'] = {'GA': ['AAA'], 'GB': ['BBB'], 'GC': ['CCC']}
-    m['layers']['L2'].update(P, entities=['AAA', 'BBB'], min_sessions_archived=10)
+    m['layers']['L2'].update(P, entities=['AAA', 'BBB'], min_live_sessions=10)
     m['layers']['L2'].update(over)
     return m
 
@@ -115,15 +115,31 @@ def test_sessions_after_the_as_of_date_are_not_counted():
     assert out['sessions_archived'] == 20 and out['session'] == days[19]
 
 
-def test_session_gate_is_enforced_in_code():
+def test_session_gate_counts_live_sessions_not_raw_files():
+    # 30 raw files, but the first live layer value needs a 5-session window, a 5-session change and 5 earlier changes
+    # (z_min_history 5): sessions 15 to 30 are live, 16 of them.
     days = weekdays(30)
     tr = tape('AAA', days, [100] * 30) + tape('BBB', days, [200] * 30)
-    early = l2_cds.snapshot(days[-1], tr, days, method(min_sessions_archived=31))
-    assert not early['gate']['met'] and not early['scored'] and early['role'].startswith('observation only')
-    assert build._weights({'layers': {'L1': 0.6, 'L2': 0.4}}, {'L2': early}) == {'L1': 0.6, 'L2': 0.0}
-    late = l2_cds.snapshot(days[-1], tr, days, method(min_sessions_archived=30))
-    assert late['scored'] and build._weights({'layers': {'L1': 0.6, 'L2': 0.4}}, {'L2': late}) == {'L1': 0.6, 'L2': 0.4}
-    assert [p['scored'] for p in early['_series']] == [False] * 30
+    files = l2_cds.snapshot(days[-1], tr, days, method(min_live_sessions=30))
+    g = files['gate']
+    assert g['raw_files'] == 30 and g['sessions_live'] == 16 and not g['met'] and not files['scored']
+    assert files['role'].startswith('observation only') and '30 raw files' in files['role']
+    assert build._weights({'layers': {'L1': 0.6, 'L2': 0.4}}, {'L2': files}) == {'L1': 0.6, 'L2': 0.0}
+    live = l2_cds.snapshot(days[-1], tr, days, method(min_live_sessions=16))
+    assert live['scored'] and build._weights({'layers': {'L1': 0.6, 'L2': 0.4}}, {'L2': live}) == {'L1': 0.6, 'L2': 0.4}
+    assert [p['scored'] for p in live['_series']] == [False] * 29 + [True]
+    assert [p['sessions_live'] for p in live['_series']][-3:] == [14, 15, 16]
+
+
+def test_session_gate_ignores_sessions_where_no_name_was_eligible():
+    # a backfilled archive with a long hole: files on disk for every day, prints only on some
+    days = weekdays(40)
+    spreads = [100] * 20 + [[]] * 10 + [100] * 10
+    tr = tape('AAA', days, spreads) + tape('BBB', days, spreads)
+    out = l2_cds.snapshot(days[-1], tr, days, method(min_live_sessions=10))
+    live = [p['session'] for p in out['_series'] if p['status'] == 'fresh']
+    assert out['gate']['raw_files'] == 40 and out['gate']['sessions_live'] == len(live) < 40
+    assert out['scored'] == (len(live) >= 10)
 
 
 def test_quoted_and_upfront_implied_prints_are_labelled():

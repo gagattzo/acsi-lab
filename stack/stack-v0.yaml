@@ -20,6 +20,8 @@ engine:
   staleness: {full_weight_days: 120, zero_weight_days: 180}
   group_cap: 0.2
   min_groups_for_stressed: 2
+  # a daily layer's last value counts as live in a composite for this many calendar days (a weekend plus a holiday)
+  junior_carry_days: 4
 
 # Consolidated borrower groups (a parent and its SPVs count as one). Entity ids are the DTCC ids in harness/dtcc.py.
 # TODO: harness/dtcc.py emits only ORCL, CRWV and META. Candidates on the tape with on-the-run 5Y CDS (27 Nov 2026
@@ -89,7 +91,7 @@ layers:
     z_window: 252
     z_min_history: 126
     z_floor_bp: 5
-    min_sessions_archived: 126
+    min_live_sessions: 126
   L3:
     name: Private loan marks
     kind: senior
@@ -155,7 +157,7 @@ layers:
 composites:
   junior:
     layers: {L1: 0.6, L2: 0.4}
-    note: L2 counts 0 until min_sessions_archived sessions are archived (enforced in code).
+    note: L2 counts 0 until it has had a live layer value on min_live_sessions sessions (enforced in code; raw files on disk do not count).
   senior:
     layers: {L3: 0.5, L4: 0.5}
   weekly_stack:

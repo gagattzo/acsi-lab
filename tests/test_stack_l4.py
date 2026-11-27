@@ -312,6 +312,7 @@ def test_layer_point_requires_live_share():
     dead = {'issuer': 'BBB', 'group': 'GB', 'score': None, 'weight': 0.0}
     pt = L4.layer_point({'AAA': live, 'BBB': dead}, '2026-11-25', m)
     assert pt['status'] == 'insufficient_live_weight' and pt['Z'] is None and pt['live_share'] == 0.5
+    assert pt['Z_unpublished'] == pytest.approx(1.0) and pt['level'] is None  # computed and shown, never published
     pt = L4.layer_point({'AAA': live, 'BBB': dict(dead, score=-1.0, weight=1.0)}, '2026-11-25', m)
     assert pt['status'] == 'ok' and pt['Z'] == pytest.approx(0.0) and pt['weights']['cap_infeasible']
     assert pt['cap'] == 'Watch'  # 2-group rule: no group is Stressed
@@ -349,6 +350,10 @@ def test_compute_offline_from_cache(tmp_path):
     assert b['metrics']['f2']['status'] == 'stale' and b['metrics']['f4']['status'] == 'missing'
     assert 'BBB f4: missing' in res['coverage_gaps']
     assert res['status'] == 'insufficient_live_weight' and res['Z'] is None  # BBB has no live metric: 50% live
+    np_ = res['not_published']                                                 # ...but readers can see the value
+    assert np_['live_share'] == 0.5 and np_['Z'] is not None and np_['level'] is not None
+    assert np_['note'].startswith('not published') and res['published'] is None
+    assert res['as_of'] == '2026-09-30' and res['as_of'] <= res['available'] <= res['build_date'] == '2026-11-25'
     assert len(inputs) == 4 and all(len(i['sha256']) == 64 for i in inputs)
     assert res['stubs']['f3'] and res['issuers']['AAA']['metrics']['f3']['status'] == 'not_implemented'
     json.dumps(res, allow_nan=False)
@@ -373,6 +378,12 @@ def test_compute_series_is_fresh_on_releases_only(tmp_path):
     assert s[-1]['session'] == '2026-11-24' and s[-1]['status'] == 'carried' and res['status'] == 'carried'
     assert {x['session'] for x in s if x['status'] == 'fresh'} >= {'2026-11-05', '2026-10-15'}
     assert res['available'] == '2026-11-05'
+    # a carried point holds the last release's value exactly (only the live share follows staleness)
+    last_fresh = [x for x in s if x['status'] == 'fresh'][-1]
+    assert s[-1]['Z'] == last_fresh['Z'] and res['Z'] == round(last_fresh['Z'], 3)
+    later, _ = L4.compute('2027-01-20', m, {'root': str(fixture_root(tmp_path)), 'offline': True})
+    assert later['_series'][-1]['Z'] in (None, last_fresh['Z'])          # never a new number without a new filing
+    assert later['_series'][-1]['live_share'] <= s[-1]['live_share']
 
 
 def test_online_needs_sec_user_agent(tmp_path, monkeypatch):

@@ -608,13 +608,18 @@ def layer_point(issuers, as_of, method):
                  'band': engine.BANDS[engine.raw_band(lv, cut)]}
     live_share = sum(s['weight'] for s in issuers.values()) / n if n else 0.0
     out = {'as_of': as_of, 'groups': gz, 'live_share': live_share, 'min_live_share': eng['min_live_share']}
-    if not gz or live_share + 1e-12 < eng['min_live_share']:
+    if not gz:
         return dict(out, status='insufficient_live_weight', Z=None, level=None, cap=None, cap_reason=None,
-                    groups_stressed=[], weights=None,
+                    groups_stressed=[], weights=None, Z_unpublished=None, level_unpublished=None,
                     reason=f'live issuer weight {live_share:.0%} of target, needs {eng["min_live_share"]:.0%}')
     capw = engine.cap_weights({g: v['base_weight'] for g, v in gz.items()}, eng['group_cap'])
     Z = sum(capw['weights'][g] * gz[g]['z'] for g in gz)
     capb, why, hot = engine.two_group_cap({g: v['level'] for g, v in gz.items()}, cut, eng['min_groups_for_stressed'])
+    if live_share + 1e-12 < eng['min_live_share']:
+        # below the live rule: the value is computed and shown (Z_unpublished), never published, scored or banded
+        return dict(out, status='insufficient_live_weight', Z=None, level=None, cap=capb, cap_reason=why,
+                    groups_stressed=hot, weights=capw, Z_unpublished=Z, level_unpublished=engine.logistic(Z, tau),
+                    reason=f'live issuer weight {live_share:.0%} of target, needs {eng["min_live_share"]:.0%}')
     return dict(out, status='ok', Z=Z, level=engine.logistic(Z, tau), cap=capb, cap_reason=why, groups_stressed=hot,
                 weights=capw)
 
@@ -743,11 +748,19 @@ def layer_series(data, issuers, as_of, method):
     releases = set(dates)
     if not dates or dates[-1] != as_of:
         dates.append(as_of)
-    series = []
+    series, last = [], None
     for d in dates:
         pt = layer_point(snapshot_all(data, issuers, d, method), d, method)
-        st = ('fresh' if d in releases else 'carried') if pt['status'] == 'ok' else pt['status']
-        series.append(dict(pt, session=d, status=st))
+        if d in releases:
+            pt = dict(pt, session=d, status='fresh' if pt['status'] == 'ok' else pt['status'])
+            last = pt
+        elif pt['status'] == 'ok' and last is not None and last['status'] == 'fresh':
+            # no new filing: the value of the last release is carried as it was (like L3); only the live share follows
+            # the staleness of its facts, so it can still fall below the live rule
+            pt = dict(last, session=d, status='carried', live_share=pt['live_share'], carried_from=last['session'])
+        else:
+            pt = dict(pt, session=d, status='carried' if pt['status'] == 'ok' else pt['status'])
+        series.append(pt)
     h = eng['hysteresis']
     bands = engine.replay_bands(series, 'senior', config_cuts(method), up_releases=h['senior_up_releases'],
                                 down_margin=h['down_margin'])
@@ -782,7 +795,7 @@ def _round_issuer(s):
 def compute(as_of, method, ctx):
     """Build-facing entry point: (result, inputs). ctx: {'root', 'offline', optional 'today', 'opener'}."""
     p = method['layers']['L4']
-    base = {'layer': 'L4', 'name': p['name'], 'kind': 'senior', 'as_of': as_of,
+    base = {'layer': 'L4', 'name': p['name'], 'kind': 'senior', 'build_date': as_of, 'as_of': None,
             'note': 'anchors, scales and windows are proposed examples, not calibrated'}
 
     def unavailable(reason, **kw):
@@ -828,7 +841,13 @@ def compute(as_of, method, ctx):
     held = (f'held from the last publishable release ({last_published}): ' +
             ('no new release on the as-of date' if status == 'carried' else 'no publishable value on the as-of date') +
             ', so the band cannot move') if last_published else 'no publishable release yet'
-    out = dict(base, status=status, available=last_release, last_published_release=last_published,
+    ends = [m['period_end'] for s in iss.values() for k, m in s['metrics'].items()
+            if k in s['metrics_live'] and m.get('period_end')]
+    out = dict(base, status=status, as_of=max(ends) if ends else None, available=last_release,
+               dates_note=('as_of: latest period end among the live quarterly metrics; available: latest filing date of '
+                           'any fact or scored 8-K read (on or before the build date); f4 counts 8-Ks up to the build '
+                           'date'),
+               last_published_release=last_published,
                Z=_r(pt['Z'], 3), level=_r(pt['level'], 2),
                published=engine.published(pt['level']), raw_band=pt['raw_band'], band=pt['band'],
                band_status='fresh' if status == 'fresh' else held,
@@ -840,11 +859,22 @@ def compute(as_of, method, ctx):
                releases_in_history=sum(1 for s in series if s['status'] == 'fresh'), history_start=p['history_start'],
                groups=groups, attribution=attribution, coverage=coverage, coverage_gaps=gaps,
                issuers={k: _round_issuer(v) for k, v in iss.items()},
+               # how a file was obtained (downloaded, cached, cached snapshot) is run metadata, not edition content: the
+               # same files give the same edition online or offline. Files are identified in the build's inputs.
                sources={'snapshots': snaps, 'missing': missing,
-                        'fetch': {pathlib.Path(r['path']).name + ' ' + r['kind'] if r.get('path') else r['url']: r['fetch']
-                                  for r in records}},
+                        'download_failures': sorted(r['fetch'] for r in records if 'download failed' in str(r.get('fetch')))},
                stubs={'f3': NOT_IMPLEMENTED_F3},
-               _series=[{'session': s['session'], 'Z': s['Z'], 'status': s['status']} for s in series])
+               _series=[{'session': s['session'], 'known': s['session'], 'Z': s['Z'], 'level': s['level'],
+                         'status': s['status'], 'live_share': s['live_share'], 'band': s.get('band'),
+                         'raw_band': s.get('raw_band'), 'band_moved': s.get('band_moved'),
+                         'groups_stressed': s.get('groups_stressed') or []} for s in series])
+    if status == 'insufficient_live_weight' and pt.get('Z_unpublished') is not None:
+        out['not_published'] = {
+            'Z': _r(pt['Z_unpublished'], 3), 'level': _r(pt['level_unpublished'], 2), 'live_share': _r(pt['live_share']),
+            'min_live_share': pt['min_live_share'],
+            'note': (f"not published: live issuer weight {pt['live_share']:.0%} is below {pt['min_live_share']:.0%}; "
+                     'shown so readers can see it, never scored, banded or used in a composite')}
+        out['attribution_note'] = 'attribution of the unpublished value'
     if snaps and snaps[-1] < as_of:
         out['snapshot_warning'] = (f'newest SEC snapshot is {snaps[-1]}, before the as-of date: filings after it are missing')
     if status != 'fresh' and pt.get('reason'):

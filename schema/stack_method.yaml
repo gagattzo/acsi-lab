@@ -28,6 +28,7 @@ sections:
       staleness: {type: staleness}
       group_cap: {type: number, min: 0.01, max: 1, description: "Largest share of a layer one borrower group may carry"}
       min_groups_for_stressed: {type: int, min: 1, max: 10, description: "Groups at Stressed or worse needed for a layer to be Stressed or Severe"}
+      junior_carry_days: {type: int, min: 0, max: 10, description: "Calendar days a junior (daily) layer value may be carried into a composite as live; older, it is stale (default 4)"}
 
   bands:
     required: [normal, watch, stressed, severe]
@@ -102,7 +103,7 @@ sections:
 
   layer_l2:
     required: [name, kind, cadence, entities, window_sessions, change_sessions, min_prints, min_sessions_with_prints,
-               max_sessions_since_print, z_window, z_min_history, z_floor_bp, min_sessions_archived]
+               max_sessions_since_print, z_window, z_min_history, z_floor_bp, min_live_sessions]
     keys:
       name: {type: str}
       kind: {type: enum, values: [junior]}
@@ -118,7 +119,7 @@ sections:
       z_window: {type: int, min: 20, max: 1000, description: "Previous observations used for the robust z"}
       z_min_history: {type: int, min: 5, max: 1000, description: "Fewer previous observations than this: insufficient_history"}
       z_floor_bp: {type: number, min: 0.01, max: 1000, description: "Floor on 1.4826 * MAD, in bp of change"}
-      min_sessions_archived: {type: int, min: 1, max: 2000, description: "L2 weight is 0 in every composite until this many sessions are archived"}
+      min_live_sessions: {type: int, min: 1, max: 2000, description: "L2 weight is 0 in every composite until L2 has had a live layer value (an eligible name with a z) on this many sessions; raw files on disk do not count"}
 
   layer_l3:
     required: [name, kind, cadence, months, score_rows, breadth_below, min_matched_facilities, group_weights,

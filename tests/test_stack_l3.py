@@ -228,15 +228,33 @@ def test_a_filing_after_the_as_of_date_is_invisible(tmp_path):
     before = l3_bdc.snapshot('2026-08-10', rba, fl, m)     # the 30 Jun 10-Q is filed on 11 Aug
     assert before['status'] == 'unavailable' or before['Z'] is None
     assert all(p['session'] <= '2026-08-10' for p in l3_bdc.layer_series(rba, fl, m, '2026-08-10'))
-    after = l3_bdc.snapshot('2026-08-11', rba, fl, m)
+    # filed 11 Aug: published at the August release point (31 Aug), not before, so a mid-month edition equals what a
+    # later replay shows for that day
+    waiting = l3_bdc.snapshot('2026-08-11', rba, fl, m)
+    assert waiting['status'] == 'unavailable' and waiting['Z'] is None and '2026-08-31' in waiting['reason']
+    after = l3_bdc.snapshot('2026-08-31', rba, fl, m)
     assert after['status'] == 'fresh' and after['available'] == '2026-08-11' and after['groups']['CoreWeave']['m1_markdown'] == -0.1
-    # an amendment replaces the original only from its own filing date
+    # an amendment replaces the original only from its own filing date, published at the next release point
     raw = tmp_path / 'data' / 'raw' / 'sec_bdc'
     write_zip(raw / '2026_10_bdc.zip', [filing('111', 'ALPHA BDC', '2026-06-30', '2026-10-05', 'A-3',
                                               [loan(CW.format('9.73%', '1'), '1000', '1000', '1000')], form='10-Q/A')])
     rba, fl = load(tmp_path, files + ['2026_10_bdc.zip'])
     assert l3_bdc.snapshot('2026-10-04', rba, fl, m)['groups']['CoreWeave']['m1_markdown'] == -0.1
-    assert l3_bdc.snapshot('2026-10-05', rba, fl, m)['groups']['CoreWeave']['m1_markdown'] == 0.0
+    assert l3_bdc.snapshot('2026-10-05', rba, fl, m)['groups']['CoreWeave']['m1_markdown'] == -0.1
+    assert l3_bdc.snapshot('2026-10-31', rba, fl, m)['groups']['CoreWeave']['m1_markdown'] == 0.0
+
+
+def test_a_mid_month_edition_equals_the_later_replay_of_that_day(tmp_path):
+    write_log(tmp_path, [human_accept('CoreWeave')])
+    rba, fl = load(tmp_path, two_quarters(tmp_path, [loan(CW.format('10.23%', '1'), '1000', '1000', '1000')],
+                                          [loan(CW.format('9.73%', '1'), '1000', '1000', '970')]))
+    m = method()
+    replay = {p['session']: p for p in l3_bdc.layer_series(rba, fl, m, '2026-11-25')}
+    for d in ('2026-08-20', '2026-09-15', '2026-10-31', '2026-11-25'):
+        own = l3_bdc.snapshot(d, rba, fl, m)
+        month_end = max(s for s in replay if s <= d)       # the replay's point on or before d
+        assert own['Z'] == (None if replay[month_end]['Z'] is None else round(replay[month_end]['Z'], 3))
+        assert own['status'] != 'fresh' or l3_bdc.is_month_end(d)
 
 
 def test_a_carried_point_holds_the_value_and_goes_stale(tmp_path):
@@ -248,10 +266,28 @@ def test_a_carried_point_holds_the_value_and_goes_stale(tmp_path):
     fresh = l3_bdc.snapshot('2026-08-31', rba, fl, m)
     later = l3_bdc.snapshot('2026-11-25', rba, fl, m)       # 148 days after period end: weight 0.53
     assert fresh['status'] == 'fresh' and later['status'] == 'carried'
-    assert later['Z'] == fresh['Z'] and later['available'] == '2026-08-11' and later['release'] == '2026-08-31'
+    assert later['Z'] == fresh['Z'] and later['available'] == '2026-08-11' and later['release_point'] == '2026-08-31'
     assert later['weight_factor'] == pytest.approx((180 - 148) / 60, abs=1e-4)
     assert later['band_status'].startswith('held')
     assert l3_bdc.snapshot('2026-12-31', rba, fl, m)['status'] == 'stale'   # 184 days
+
+
+def test_dates_are_ordered_as_of_then_available_then_build_date(tmp_path):
+    # the vintage (period end 30 Jun) is filed 11 Aug and first published at the 31 Aug release point; a later build
+    # carries it. as_of is the vintage, available the filing date, never after the build date.
+    write_log(tmp_path, [human_accept('CoreWeave')])
+    files = two_quarters(tmp_path, [loan(CW.format('10.23%', '1'), '1000', '1000', '1000')],
+                         [loan(CW.format('9.73%', '1'), '1000', '1000', '970')])
+    rba, fl = load(tmp_path, files)
+    m = method()
+    assert l3_bdc.snapshot('2026-08-20', rba, fl, m)['as_of'] is None   # filed, not released yet: no dates claimed
+    for d in ('2026-08-31', '2026-09-15', '2026-11-25'):
+        r = l3_bdc.snapshot(d, rba, fl, m)
+        assert r['build_date'] == d and r['as_of'] == '2026-06-30' and r['available'] == '2026-08-11'
+        assert r['as_of'] <= r['available'] <= r['build_date']
+        assert r['available'] <= r['release_point'] <= r['build_date']
+        for p in l3_bdc.layer_series(rba, fl, m, d):
+            assert p['latest_filed'] is None or p['latest_period'] <= p['latest_filed'] <= p['session'] <= d
 
 
 # --- review status ---------------------------------------------------------------------------------------------------
@@ -318,7 +354,7 @@ def test_build_runs_l3_offline_and_writes_the_exposure_map(tmp_path):
     two_quarters(tmp_path, [loan(CW.format('10%', '1'), '1000', '1000', '1000')],
                  [loan(CW.format('9%', '1'), '1000', '1000', '980'),
                   loan('Lambda Labs, Inc. | First Lien', '1000', '1000', '1000', maturity='2029-01-01')])
-    out, inputs = build.run('2026-08-20', ['L3'], offline=True, root=tmp_path)
+    out, inputs = build.run('2026-08-31', ['L3'], offline=True, root=tmp_path)  # the August release point
     l3 = out['layers']['L3']
     assert l3['status'] == 'fresh' and l3['scope'] == 'observed BDC book' and l3['Z'] is not None
     assert l3['metrics']['m4_non_accrual']['status'] == 'not_implemented'
@@ -336,7 +372,7 @@ def test_build_runs_l3_offline_and_writes_the_exposure_map(tmp_path):
     assert [r['borrower_group'] for r in rows if r['table'] == 'borrower'] == ['CoreWeave']   # Lambda is unsigned
     man = list(csv.DictReader(open(tmp_path / 'manifests' / 'sec_bdc_sha256.csv')))
     assert [r['file'] for r in man] == ['2026_05_bdc.zip', '2026_08_bdc.zip'] and all(len(r['sha256']) == 64 for r in man)
-    assert build.run('2026-08-20', ['L3'], offline=True, root=tmp_path) == (out, inputs)   # deterministic
+    assert build.run('2026-08-31', ['L3'], offline=True, root=tmp_path) == (out, inputs)   # deterministic
 
 
 def test_a_network_fetch_without_sec_user_agent_fails_clearly(tmp_path, monkeypatch):
@@ -377,8 +413,11 @@ def test_a_download_is_cached_and_months_after_the_as_of_date_are_not_read(tmp_p
     m = method(months=['2026_08', '2026_10'])
     res, _ = l3_bdc.compute('2026-09-01', m, {'root': str(tmp_path / 'r'), 'offline': False, 'opener': opener})
     assert len(seen) == 1 and seen[0][0].endswith('2026_08_bdc.zip') and seen[0][1] == 'test-suite research@example.test'
-    assert [x['status'] for x in res['months']] == ['downloaded', 'after as_of: not read']
+    # downloaded on this run, reported like a cached file: the edition does not depend on the fetch mode
+    assert [x['status'] for x in res['months']] == ['cached', 'after as_of: not read']
     assert (tmp_path / 'r' / 'data' / 'raw' / 'sec_bdc' / '2026_08_bdc.zip').exists()
+    again, _ = l3_bdc.compute('2026-09-01', m, {'root': str(tmp_path / 'r'), 'offline': True})
+    assert again == res and len(seen) == 1
 
 
 def test_the_shipped_l3_settings_are_valid_and_unknown_keys_are_rejected():

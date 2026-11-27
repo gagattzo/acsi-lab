@@ -128,10 +128,12 @@ def test_build_reports_every_layer_and_holds_no_timestamps(tmp_path):
     out, inputs = build.run(days[-1], None, offline=True, root=root, weekly=True)
     assert out['layers']['L1']['status'] == 'unavailable' and out['layers']['L1']['Z'] is None  # offline, no price cache
     assert out['layers']['L3']['status'] == 'unavailable' and out['layers']['L3']['Z'] is None  # offline, no SEC BDC cache
-    assert {k: out['layers'][k]['status'] for k in ('L4',)} == {k: 'not_implemented' for k in ('L4',)}
+    assert out['layers']['L4']['status'] == 'unavailable' and out['layers']['L4']['Z'] is None  # offline, no SEC cache
     assert all(out['layers'][k]['reason'] for k in ('L1', 'L3', 'L4'))
+    assert all(out['layers'][k]['build_date'] == days[-1] for k in out['layers']) and out['date_check']['ok']
     l2 = out['layers']['L2']
-    assert l2['sessions_archived'] == 30 and not l2['scored']        # 30 < 126: shown, not scored
+    assert l2['sessions_archived'] == 30 and not l2['scored']        # no live session yet, 126 needed: shown, not scored
+    assert l2['gate']['raw_files'] == 30 and l2['gate']['sessions_live'] == 0
     assert out['junior']['weights_effective']['L2'] == 0.0 and out['junior']['status'] == 'insufficient_live_weight'
     assert out['senior']['status'] == 'insufficient_live_weight' and out['senior']['Z'] is None
     assert out['weekly_stack']['label'] == 'optional, not adopted' and out['weekly_stack']['Z'] is None
