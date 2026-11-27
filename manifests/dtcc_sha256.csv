@@ -285,3 +285,4 @@ date,url,bytes,sha256,fetched_at
 2026-11-23,https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_2026_11_23.zip,78323,277ce3eaad11a1e3f906eb20f9829489130cbcc36ff1c8f71f06085f8f8d631f,
 2026-11-24,https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_2026_11_24.zip,89272,f3a148d663bf8897e93e903e06705ce0257450056ddefa5305a6438afe5d44ae,
 2026-11-25,https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_2026_11_25.zip,142809,4af9a167c08e6d47d94814c252065c56055fcc8407ab1ae4380acb59cf2ac8a1,
+2026-11-26,https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_2026_11_26.zip,33876,7ee588e600dca5b8c486b91f1d6d2403b228ccc8f06f446804c0b0d961d221ed,2026-11-27T04:18:23+00:00
