@@ -26,7 +26,7 @@ v0.1 scored on 262 trading days (24 Oct 2025 to 25 Nov 2026), daily changes (v0.
 
 | Test | Baseline | Read |
 | --- | --- | --- |
-| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 (0.055 / 0.072 / 0.048 / 0.078) | Broad markets explain under 8% of daily moves |
+| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 (0.055 / 0.072 / 0.048 / 0.078) | Broad markets explain under 8% of daily moves. Weekly R² on the Nasdaq runs 0.5% to 29% depending on the start day, and short spells of co-movement beat chance; no lock-in on selloff days. See `research/findings/2026-11-28-nasdaq-regimes.md` |
 | Most a single trade moved it | 21.2 points, p95 6.8 (21.2, p95 7.0) | Far too much: on a quiet day one CoreWeave print sets the level alone |
 | Days resting on an input with fewer than 3 trades | 77% | The main weakness |
 | Days a level is set by a single trade | 32% | |
