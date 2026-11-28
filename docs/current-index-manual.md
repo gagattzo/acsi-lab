@@ -1,10 +1,10 @@
 # AISTRESS: Current Index Manual
 
-**Document version 1.0 | Verified 28 November 2026 | Research implementation**
+**Document version 1.1 | Verified 28 November 2026 | Research implementation**
 
 This manual explains the calculations, data controls and operating behavior that actually exist. It is written for investment, product, risk and engineering reviewers. It does not adopt a new economic methodology or certify a benchmark. The opening sections explain the product; the later sections provide the implementation and operating reference.
 
-**Implementation examined:** website commit `022c39b82e977cced2e00243748de58b4dc98101`; lab commit `09990a69828834852355e61b2fbecce2510cbb37`. The website commit was the READY production deployment at verification. All 79 tracked website files and 90 tracked lab files matched the corresponding local release trees before this documentation update. References in section 14 pin those versions so later code changes cannot silently change the evidence for this manual.
+**Implementation examined:** website commit `022c39b82e977cced2e00243748de58b4dc98101`; lab commit `09990a69828834852355e61b2fbecce2510cbb37`. The website commit was the READY production deployment at verification. All 79 tracked website files and 90 tracked lab files matched the corresponding local release trees before this documentation update. References in section 14 pin those baseline versions. Version 1.1 additionally documents the bond-publication containment change shipped with this manual; it changes public output controls, not the index arithmetic or CDS decoder.
 
 The authoritative maintained source is `docs/current-index-manual.md` in the lab repository, mirrored to the website repository. The website HTML and PDF are generated from that same text. Earlier reports remain historical records. If an implementation change alters a rule below, the manual must be reviewed and versioned with that change. A dated status observation is not a promise that a feed will remain in that state.
 
@@ -32,7 +32,7 @@ The production status endpoint returned `status: unavailable`, `current: null` a
 
 The former current headline **+67.8** relied on the earlier decoder and is not a validated current reading. In the separate 42-file replay from 1 October through 27 November, all 87 eligible CoreWeave upfront reports had ambiguous payment direction under the simplified model. That finding is scoped to the inspected sample. It is not a statement that every CoreWeave trade is unknowable from every possible source.
 
-The private saved-snapshot bond replay produced 14 complete calculation candidates across 45 dates, covering 6-27 November. The public bond series remained withheld. On 27 November, six issues were fresh and 18 were carried; only 15.79% of fixed basket weight was fresh. These are retrospective private calculation diagnostics, not proof of a successful daily feed or a public benchmark history. Private values and source archives are separate from this public manual.
+The private saved-snapshot bond replay produced 14 complete calculation candidates across 45 dates, covering 6-27 November. The public aggregate bond series remained withheld. A subsequent review found that the public constituent and historical input files still exposed derived market values despite that basket-level restriction; version 1.1 corrects this separate publication failure. On 27 November, six issues were fresh and 18 were carried; only 15.79% of fixed basket weight was fresh. These are retrospective private calculation diagnostics, not proof of a successful daily feed or a public benchmark history. Private values and source archives are separate from this public manual.
 
 Automated bond collection remains paused after HTTP 404 at the configured portal initialization route. The separate DTCC research scorecard workflow remains scheduled. Neither successful software tests nor a replay of saved data establishes successful current collection.
 
@@ -177,9 +177,11 @@ The default registry is manual and currently has no automated monitoring. As imp
 
 A private replay can produce values from saved raw inputs while collection remains unverified and publication remains withheld. Private output sets `private_candidate: true`, `publication_eligible: false`, `perp_eligible: false` and `settlement_eligible: false`. It cannot write into the public `data/` directory. Replay files remain mutable until separately frozen.
 
-Public mode requires archive hashes, the full configured membership, acquisition chronology, snapshot identity, counts, boundary metadata and exact materialization of calculation fields. A source response saying “ok” is insufficient. It also requires a separate reviewed rights record for public derived research. No such record is supplied. **The current caller checks that record against the run's anchor date, not each historical output date.** Public historical release needs a per-date review/check; this manual does not overstate the implemented gate. The record does not grant institutional resale or derivative-use rights.
+Public mode requires archive hashes, the full configured membership, acquisition chronology, snapshot identity, counts, boundary metadata and exact materialization of calculation fields. A source response saying “ok” is insufficient. It also requires a separate reviewed rights record for public derived research. No such record is supplied. The public exporter additionally checks authorization against each output date and each carried observation's source date. Individual prices, yields, spreads and aggregate levels are withheld when this check fails. Public diagnostics can remain available without permission to publish market values. The record does not grant institutional resale or derivative-use rights.
 
-A failed public refresh preserves previously eligible same-method values together with their matching original input rows; it does not pair old values with new inputs. New unaccepted candidates are withheld. The public API rejects an accidentally copied private-candidate manifest. Source availability, permission, calculation and settlement are separate states.
+A failed public refresh may preserve previously eligible same-method values together with their matching original input rows only when the separate public-market-data authorization checks also pass. New unaccepted candidates are withheld. The public API rejects an accidentally copied private-candidate manifest and independently withholds market values without the required authorization evidence. Static-output validation covers constituent marks, historical inputs and legacy basket files. Source availability, permission, calculation and settlement are separate states.
+
+**Publication incident and scope.** The earlier release left constituent marks and historical research values in public static files and the trace API. They were removed from the current output in the version 1.1 containment release. This forward change does not erase Git history, previously downloaded copies or older deployment URLs. A claim that all historical copies have been withdrawn would require separate verification.
 
 ## 7. Frozen research records and corrections
 
@@ -206,7 +208,7 @@ Writes use a series-wide POSIX lock, fsynced temporary file, atomic exclusive ha
 | Homepage headline | Current research if eligible; otherwise the dated weekly edition with a reason |
 | `/api/index` | Machine-readable current/null, weekly edition, source quality and limitations; HTTP 200 with current, 503 when unavailable |
 | `/api/cds` | Dated accepted levels and diagnostics; an individual price may exist while aggregate source quality blocks the headline |
-| `/api/trace` | Public bond research allowlist; refuses private manifests; missing/invalid input returns 503 |
+| `/api/trace` | Public bond diagnostics; market values require explicit authorization evidence; refuses private manifests; missing/invalid input returns 503 |
 | `/api/og` and `/s/…` | Share rendering using the same headline helper, with weekly fallback; timestamped share links are not frozen fixings |
 | `/e/<date>/` | Original dated edition, preserved as published |
 | Page JSON download | Weekly reading and reconstruction; not an immutable current CDS fixing |
@@ -331,7 +333,7 @@ The public gap can fall when GPU stress rises even if financing remains distress
 
 ## 14. Source map and document maintenance
 
-The following references identify the exact audited implementation. Current repository documentation links to this manual; historical reports and the v0.1 PDF remain labelled for their original scope.
+The following pinned references identify the audited baseline implementation. The version 1.1 bond-publication changes are carried in `harness/bond_publication.py`, `harness/bond_spreads.py`, `harness/validate_bond_publication.py` and the website `api/trace.js` in the same release as this manual; baseline links below do not include that later containment patch. Current repository documentation links to this manual; historical reports and the v0.1 PDF remain labelled for their original scope.
 
 | Topic | Pinned source |
 | --- | --- |
