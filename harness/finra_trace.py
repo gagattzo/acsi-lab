@@ -336,11 +336,23 @@ async def run_pipeline(universe_path: str, test_mode: bool = False, output_dir: 
         json.dump(all_refs, f, indent=2)
     print(f"\n[3/4] Saved {len(all_refs)} reference records to {ref_file}")
 
-    # 2. Raw TRACE trades Parquet
-    df_raw = pd.DataFrame(all_trades)
+    # 2. Raw TRACE trades Parquet (Append-Only)
     raw_file = out_dir / "trace_trades_raw.parquet"
+    df_new = pd.DataFrame(all_trades)
+    
+    if raw_file.exists():
+        df_existing = pd.read_parquet(raw_file)
+        df_raw = pd.concat([df_existing, df_new], ignore_index=True)
+        # Deduplicate on key fields to preserve history past 500 cap
+        df_raw = df_raw.drop_duplicates(
+            subset=["cusip", "tradeExecutionDate", "tradeExecutionTime", "reportedTradeVolume", "lastSalePrice", "tradeStatus"],
+            keep="last"
+        )
+    else:
+        df_raw = df_new
+
     df_raw.to_parquet(raw_file, index=False)
-    print(f"      Saved {len(df_raw)} raw trades to {raw_file}")
+    print(f"      Saved {len(df_raw)} raw trades to {raw_file} (including appended history)")
 
     # 3. Clean TRACE trades Parquet
     df_clean = clean_trades(df_raw)

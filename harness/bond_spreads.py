@@ -42,7 +42,9 @@ TREASURY_CSV_URL = (
     "daily-treasury-rates.csv/2026/all?type=daily_treasury_yield_curve&field_tdr_date_value=2026&page&_format=csv"
 )
 
-# Issuer grouping map for issuer-capped index
+# Issuer grouping map for issuer-capped index:
+# Groups CoreWeave's 4 bonds and Applied Digital's 3 bonds into 1 issuer weight each
+# All other 17 bonds represent distinct facilities/SPVs, totaling 19 distinct issuers.
 ISSUER_GROUP_MAP = {
     # CoreWeave 4 bonds
     "21873SAB4": "CoreWeave",
@@ -53,9 +55,6 @@ ISSUER_GROUP_MAP = {
     "00202DAA5": "Applied Digital",
     "03772CAA1": "Applied Digital",
     "03790NAA5": "Applied Digital",
-    # Tract Reno SPVs
-    "78488XAA2": "Tract Reno",
-    "69393LAA1": "Tract Reno",
 }
 
 
