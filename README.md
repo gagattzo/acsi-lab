@@ -74,3 +74,7 @@ How the data flows, and why each guard exists: [DATA.md](DATA.md).
 - Not investment advice.
 
 Code: MIT. Run by [@gagattzo](https://github.com/gagattzo).
+
+## Bond research repair, 28 November 2026
+
+The experimental cash-bond substitution has been removed from the production headline. The repaired research pipeline is separate from adopted v0.2; see [research methodology](docs/bond-research-v1.md) and [operational status](docs/production-repair-2026-11-28.md). The current portal initialization returns HTTP 404, so no new fixing is published. This repository mirrors tested code; only the production repository schedules collection.

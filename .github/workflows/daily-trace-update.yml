@@ -1,59 +1,62 @@
 name: daily-trace-update
-
 on:
   schedule:
-    # Mon-Fri at 22:30 UTC (after US fixed-income markets close)
-    - cron: '30 22 * * 1-5'
+    # UTC, after US close in both daylight-saving regimes.
+    - cron: '30 23 * * 1-5'
+    # Retry late inputs the following morning, including Saturday after Friday.
+    - cron: '0 7 * * 2-6'
   workflow_dispatch:
-
+  push:
+    paths:
+      - '.github/workflows/daily-trace-update.yml'
+concurrency:
+  group: daily-trace-update
+  cancel-in-progress: false
 permissions:
   contents: write
-
 jobs:
   update-trace:
+    if: github.repository == 'gagattzo/Ai-credit-stress-index-'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pandas pyarrow playwright
+          python -m pip install -r requirements-bonds.txt
           python -m playwright install --with-deps chromium
-
-      - name: Scrape FINRA TRACE tape (Append-Only)
-        run: python harness/finra_trace.py
-
-      - name: Compute daily G-Spreads and par curve interpolation
-        run: python harness/bond_spreads.py
-
-      - name: Safety Guard Verification
+      - name: Validate pipeline regressions
         run: |
-          python - <<'PY'
-          import json, sys
-          with open('data/acsi_bond_universe_latest.json') as f:
-              bonds = json.load(f)
-          active = sum(1 for b in bonds if b.get('status') in ('active', 'carried'))
-          print(f"Safety Check: {active}/24 active AI infrastructure bonds.")
-          if active < 15:
-              print(f"CRITICAL ALERT: Only {active}/24 bonds active (< 15 threshold). FINRA portal may be blocking or tape empty.", file=sys.stderr)
-              sys.exit(1)
-          print("Safety check passed.")
-          PY
-
-      - name: Commit and push updated data artifacts
+          python -m pytest -q tests
+          node --test tests/headline.test.js
+      # Raw source material must not be retained in this public repository or its artifacts.
+      # The collector is available for a private execution environment; this public job
+      # deliberately fails before collection until that storage/execution is configured.
+      - name: Require private source retention before automated collection
+        if: github.event.repository.private != true
         run: |
+          echo '::error::Collection paused: configure private source retention. Public source-archive publication is not authorized. Existing market observations remain unchanged.'
+          exit 1
+      - name: Collect and preserve research inputs privately
+        id: collect
+        continue-on-error: true
+        run: python harness/daily_trace_update.py
+      - name: Commit approved derived research outputs
+        if: always() && steps.collect.outcome != 'skipped'
+        run: |
+          python harness/validate_bond_publication.py
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add data/acsi_bond_spreads_daily.json data/acsi_bond_universe_latest.json data/bond_reference.json data/trace_trades_raw.parquet data/trace_trades_clean.parquet
-          git diff --cached --quiet || (git commit -m 'chore: daily TRACE 24-bond G-spread update [skip ci]' && git push origin main)
+          git add data/acsi_bond_*.json data/bond_revisions/
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update bond research observation and quality status'
+            git push origin HEAD:main
+          fi
+      - name: Surface collection failure
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo 'Bond research update incomplete. Last valid observations retained; inspect the quality manifest.' >&2
+          exit 1
