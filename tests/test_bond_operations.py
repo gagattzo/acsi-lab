@@ -140,10 +140,66 @@ def test_public_rights_gate_requires_separate_scoped_review_record():
 def test_retained_public_inputs_stay_paired_with_retained_values(tmp_path):
     import json
     from harness.bond_spreads import export_public_safe_datasets
-    original={'date':'2026-11-27','method_version':METHOD,'id':'ACSI-BOND-01','spread_bp':500}
+    original={'date':'2026-11-27','source_date':'2026-11-27','method_version':METHOD,'id':'ACSI-BOND-01','spread_bp':500}
     (tmp_path/'acsi_bond_inputs_daily.json').write_text(json.dumps([original]))
-    series=[{**computed(),'retained_after_source_failure':True}]
+    series=[{**computed(),'retained_after_source_failure':True,'publication_eligible':True}]
     info={'TEST00001':{'issuer_group':'Test','daily_inputs':[{**original,'spread_bp':777}]}}
     universe=[{'id':'ACSI-BOND-01','cusip':'TEST00001','issuer':'Test','coupon':6,'maturity':'2031-01-01'}]
-    export_public_safe_datasets(series,{},info,universe,tmp_path,'2026-11-27')
-    assert json.loads((tmp_path/'acsi_bond_inputs_daily.json').read_text())==[original]
+    export_public_safe_datasets(series,{},info,universe,tmp_path,'2026-11-27',
+        {'collection_verification_status':'verified_snapshot','publication_blockers':[]}, rights_record())
+    result=json.loads((tmp_path/'acsi_bond_inputs_daily.json').read_text())
+    assert result[0]['spread_bp']==500
+    assert result[0]['publication_eligible']
+
+
+def rights_record(**overrides):
+    return {'record_id':'synthetic-test','reviewed_by':'test-reviewer','reviewed_at':'2020-01-01T00:00:00+00:00',
+            'evidence_reference':'test-fixture-only','valid_from':'2026-01-01','valid_through':'2026-12-31',
+            'source_id':'finra_portal_snapshot','method_version':METHOD,'scope':'public_derived_research', **overrides}
+
+
+def test_public_export_withholds_individual_and_historical_marks_without_rights(tmp_path):
+    import json
+    from harness.bond_spreads import export_public_safe_datasets
+    universe=[{'id':'ACSI-BOND-01','cusip':'TEST00001','issuer':'Test','coupon':6,'maturity':'2031-01-01'}]
+    state={'TEST00001':{'last_date':'2026-11-27','median_price':90,'median_yield':10,'g_spread_bp':600,'eligible_prints':3}}
+    info={'TEST00001':{'issuer_group':'Test','daily_inputs':[{'date':'2026-11-27','source_date':'2026-11-27','spread_bp':600,'median_price':90,'median_yield':10}]}}
+    export_public_safe_datasets([{**computed(),'publication_eligible':True}],state,info,universe,tmp_path,'2026-11-27',{'collection_verification_status':'verified_snapshot'})
+    assert json.loads((tmp_path/'acsi_bond_spreads_daily.json').read_text())[0]['g_spread_issuer_capped_bp'] is None
+    assert json.loads((tmp_path/'acsi_bond_universe_latest.json').read_text())[0]['latest_median_price'] is None
+    assert json.loads((tmp_path/'acsi_bond_inputs_daily.json').read_text())[0]['median_yield'] is None
+    # Calculation objects remain intact for private analysis.
+    assert state['TEST00001']['median_price']==90 and info['TEST00001']['daily_inputs'][0]['spread_bp']==600
+
+
+def test_authorized_export_checks_each_history_and_carried_source_date(tmp_path):
+    import json
+    from harness.bond_spreads import export_public_safe_datasets
+    universe=[{'id':'ACSI-BOND-01','cusip':'TEST00001','issuer':'Test','coupon':6,'maturity':'2031-01-01'}]
+    state={'TEST00001':{'last_date':'2026-11-25','median_price':90,'median_yield':10,'g_spread_bp':600,'eligible_prints':3}}
+    info={'TEST00001':{'issuer_group':'Test','daily_inputs':[
+        {'date':'2026-11-25','source_date':'2026-11-25','spread_bp':600},
+        {'date':'2026-11-27','source_date':'2026-11-25','spread_bp':600},
+        {'date':'2026-11-27','source_date':'2026-11-27','spread_bp':601}]}}
+    rows=[{**computed(day),'publication_eligible':True} for day in ['2026-11-25','2026-11-27']]
+    export_public_safe_datasets(rows,state,info,universe,tmp_path,'2026-11-27',
+        {'collection_verification_status':'verified_snapshot','publication_blockers':[]},rights_record(valid_from='2026-11-27'))
+    series=json.loads((tmp_path/'acsi_bond_spreads_daily.json').read_text())
+    assert series[0]['g_spread_issuer_capped_bp'] is None and series[1]['g_spread_issuer_capped_bp']==502
+    inputs=json.loads((tmp_path/'acsi_bond_inputs_daily.json').read_text())
+    assert [r['spread_bp'] for r in inputs]==[None,None,601]
+    assert json.loads((tmp_path/'acsi_bond_universe_latest.json').read_text())[0]['latest_median_price'] is None
+
+
+def test_validator_rejects_static_individual_marks_even_when_basket_null(tmp_path):
+    import json
+    from harness.validate_bond_publication import validate
+    data=tmp_path/'data';data.mkdir()
+    (data/'acsi_bond_manifest.json').write_text(json.dumps({'perp_eligible':False,'settlement_eligible':False,'publication_eligible':False}))
+    (data/'acsi_bond_spreads_daily.json').write_text('[]')
+    p=data/'acsi_bond_universe_latest.json';p.write_text(json.dumps([{'latest_median_price':90}]))
+    with pytest.raises(AssertionError,match='Individual or historical'): validate(tmp_path)
+    p.write_text('[]')
+    revisions=data/'bond_revisions';revisions.mkdir()
+    (revisions/'unexpected_name.json').write_text(json.dumps({'daily':[{'g_spread_issuer_capped_bp':500}]}))
+    with pytest.raises(AssertionError,match='Unreviewed public bond-value archive'): validate(tmp_path)
