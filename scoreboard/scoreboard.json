@@ -245,5 +245,12 @@
         "A2"
       ]
     }
-  ]
+  ],
+  "decoder_version": "pre-strict-2026-11-28",
+  "decoder_status": "historical_pre_strict",
+  "validation_scope": "historical_research_only",
+  "current_validation": false,
+  "institutional_use_eligible": false,
+  "settlement_eligible": false,
+  "notice": "Historical results retained. They do not validate dtcc-strict-v1; a source-checked strict-decoder scoreboard is pending."
 }

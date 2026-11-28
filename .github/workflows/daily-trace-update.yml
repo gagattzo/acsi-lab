@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-bonds.txt
       - name: Validate bond pipeline regressions
-        run: python -m pytest -q tests/test_bond_research.py tests/test_daily_runner.py tests/test_finra_snapshots.py tests/test_source_archive.py
+        run: python -m pytest -q tests/test_bond_research.py tests/test_bond_operations.py tests/test_daily_runner.py tests/test_finra_snapshots.py tests/test_source_archive.py
       - name: Validate homepage when present
         run: |
           if [ -f tests/headline.test.js ]; then

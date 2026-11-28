@@ -4,14 +4,14 @@ grain: one priced on-the-run 5-year single-name CDS trade
 built_by: harness/dtcc.py
 key: [date, entity, dissemination_id]
 columns:
-  - {name: date, type: date, description: "Trade date: the end-of-day file it was published in (UTC)"}
+  - {name: date, type: date, description: "Execution date (UTC), including trades reported in a later source file"}
   - {name: entity, type: enum, values: [ORCL, CRWV, META], description: Reference entity}
   - {name: dissemination_id, type: string, description: "DTCC Dissemination Identifier of the kept record (after corrections)"}
   - {name: exec_ts, type: datetime, description: Execution time as reported}
   - {name: kind, type: enum, values: [quoted, upfront], description: "quoted: spread reported directly; upfront: implied from a UFRO upfront payment (model: flat hazard, 40% recovery, 4.5% rate)"}
-  - {name: spread_bp, type: float, min: 10, max: 10000, unit: bp, description: Par spread used for the daily median}
-  - {name: coupon, type: float, nullable: true, min: 0.0001, max: 0.10, unit: decimal, description: "Running coupon after normalisation (0.01 = 1%); blank when not reported"}
+  - {name: spread_bp, type: float, finite: true, min: 0, unit: bp, description: "Accepted nonnegative finite par spread used for the research daily median; no empirical spread floor or ceiling"}
+  - {name: coupon, type: float, finite: true, nullable: true, min: 0, max: 0.10, unit: decimal, description: "Running coupon after normalisation (0.01 = 1%); blank when not reported"}
   - {name: coupon_normalised, type: bool, description: "The coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
-  - {name: upfront_pct, type: float, nullable: true, unit: percent of notional, description: "Upfront payment (UFRO only), unsigned, as % of notional"}
+  - {name: upfront_pct, type: float, finite: true, nullable: true, min: 0, unit: percent of notional, description: "Upfront payment (UFRO only), unsigned, as % of reported notional"}
   - {name: notional_capped, type: bool, description: "Notional shows the reporting cap (+); true size is larger"}
-  - {name: sign_by, type: enum, nullable: true, values: [trade, reference, large_upfront], description: "How an upfront trade's unsigned payment was read: trade (the other reading is impossible for the coupon), reference (nearer the day's eligible quotes or the previous level), large_upfront (no reference; 2% or more read as wider than the coupon). Blank for quoted trades"}
+  - {name: sign_by, type: enum, nullable: true, values: [trade], description: "trade: one feasible model root with the alternative below zero hazard, or coincident roots for zero upfront. Distinct feasible signs and numerical-domain failures are excluded. Blank for quoted trades; no reference or size-based sign guessing"}

@@ -118,12 +118,11 @@ def test_capped_notional_is_counted():
     assert level(rows)['n_capped'] == 1
 
 
-def test_infeasible_upfront_reading_is_never_taken():
-    # A 23% upfront on a 5% coupon: one sign is a real spread, the other hits the solver's floor. Found by the schema
-    # check on CoreWeave, 6 Feb 2026.
+def test_both_feasible_upfront_readings_are_excluded():
+    # A tight but nonnegative root cannot be rejected by an empirical spread floor.
     rows = [row(**{'Dissemination Identifier': '2', 'Fixed rate-Leg 1': '0.05', 'Other payment amount': '2300000'})]
     lv = level(rows, prev={'ORCL': 660.0})
-    assert lv is None or lv['official_bp'] >= 10
+    assert lv is None
 
 
 def test_percent_coupon_is_normalised():
@@ -177,28 +176,26 @@ def test_blank_event_type_is_a_trade():
 
 
 def test_one_dollar_quote_cannot_flip_the_sign():
-    # Attack found on 28 Nov 2026: a $1 quote at 50 bp was the day's reference, and the nearest reading of every
-    # CoreWeave upfront flipped to the wrong sign (1,373 bp read as 21 bp). An odd-lot quote is not eligible now.
+    # Neither an ineligible quote nor a previous mark resolves an unsigned payment.
     up = dict(CRWV, **{'Dissemination Identifier': '2', 'Other payment amount': '2309720'})   # 23.1% on $10M
     bad = dict(CRWV, **{'Dissemination Identifier': '3', 'Spread-Leg 1': '0.0050', 'Notional amount-Leg 1': '1'})
     lv = crwv_level([row(**up), row(**bad)], prev={'CRWV': 1138.6})
-    assert lv['official_trades'] == 1 and 1300 < lv['official_bp'] < 1450
+    assert lv is None
 
 
-def test_impossible_reading_loses_to_any_reference():
-    # On a 5% coupon a 23% upfront read the other way is a negative spread: the trade alone decides, so even a
-    # wrong reference (an eligible quote at 50 bp) cannot flip it.
+def test_eligible_quote_does_not_resolve_an_ambiguous_upfront():
+    # Both signs have nonnegative roots, including a tight root below the old 100bp floor.
     up = dict(CRWV, **{'Dissemination Identifier': '2', 'Other payment amount': '2309720'})
     bad = dict(CRWV, **{'Dissemination Identifier': '3', 'Spread-Leg 1': '0.0050'})
     lv = crwv_level([row(**up), row(**bad)], prev={'CRWV': 1138.6})
-    assert lv['upfront_trades'] == 1 and lv['upfront_implied_bp'] > 1300
+    assert lv['upfront_trades'] == 0 and lv['official_bp'] == 50 and lv['n_ambiguous'] == 1
 
 
-def test_two_plausible_readings_take_the_one_nearer_the_reference():
-    # A 2.2% upfront on a 1% coupon reads about 150 bp or about 50 bp; both are possible, so the prior level decides.
+def test_two_feasible_readings_are_excluded_regardless_of_reference():
+    # A 2.2% upfront on a 1% coupon has two possible signs; a previous level does not establish direction.
     rows = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '220000'})]
     wide, tight = level(rows, prev={'ORCL': 150.0}), level(rows, prev={'ORCL': 60.0})
-    assert wide['official_bp'] > 130 and tight['official_bp'] < 70 and wide['n_sign_from_reference'] == 1
+    assert wide is None and tight is None
 
 
 def test_small_upfront_without_any_reference_is_dropped():
@@ -218,7 +215,7 @@ def test_basket_legs_sharing_one_upfront_across_names_do_not_price():
     # own trades said 205-208.
     o = row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:00Z'})
     m = row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:01:00Z'}))
-    real = row(**{'Dissemination Identifier': '4', 'Other payment amount': '465890'})
+    real = row(**{'Dissemination Identifier': '4', 'Spread-Leg 1': '.0208'})
     lv, _ = dtcc.parse_day([o, m, real], DAY, {'ORCL': 208.0, 'META': 90.0})
     assert lv['ORCL']['official_trades'] == 1 and lv['ORCL']['n_basket_legs'] == 1 and 'META' not in lv
 
@@ -228,10 +225,12 @@ def test_same_upfront_minutes_apart_or_on_one_name_is_not_a_basket():
              row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:10:00Z'}))]
     same = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460'}),
             row(**{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:30Z'})]
-    lv, _ = dtcc.parse_day(apart, DAY, {'ORCL': 150.0, 'META': 150.0})
-    assert lv['ORCL']['n_basket_legs'] == 0 and 'META' in lv
-    lv, _ = dtcc.parse_day(same, DAY, {'ORCL': 150.0})
-    assert lv['ORCL']['official_trades'] == 2
+    quality = {}
+    lv, _ = dtcc.parse_day(apart, DAY, {'ORCL': 150.0, 'META': 150.0}, quality=quality)
+    assert not lv and quality['ORCL']['basket_legs'] == quality['META']['basket_legs'] == 0
+    assert quality['ORCL']['ambiguous'] == quality['META']['ambiguous'] == 1
+    lv, _ = dtcc.parse_day(same, DAY, {'ORCL': 150.0}, quality=quality)
+    assert not lv and quality['ORCL']['basket_legs'] == 0 and quality['ORCL']['ambiguous'] == 2
 
 
 def _file(day, rows):
@@ -354,13 +353,18 @@ def test_raw_files_match_the_committed_manifest():
 
 
 @needs_data
-@pytest.mark.parametrize('date,entity,bp', [('2026-11-24', 'ORCL', 364.5), ('2026-11-25', 'ORCL', 373.2), ('2026-11-24', 'CRWV', 1372.7),
-                                            ('2026-11-25', 'META', 124.2)])
-def test_levels_match_the_published_site(date, entity, bp):
-    rows = {(r['date'], r['entity']): float(r['official_bp']) for r in csv.DictReader(open(CANON / 'cds_daily.csv'))}
-    if (date, entity) not in rows:
-        pytest.skip('date outside the built window')
-    assert abs(rows[(date, entity)] - bp) <= 1.0
+def test_daily_levels_match_their_accepted_canonical_trades():
+    # Published values from an older decoder are not correctness targets after a methodology repair.
+    import statistics
+    trades = {}
+    for r in csv.DictReader(open(CANON / 'cds_trades.csv')):
+        trades.setdefault((r['date'], r['entity']), []).append(float(r['spread_bp']))
+    daily = {(r['date'], r['entity']): r for r in csv.DictReader(open(CANON / 'cds_daily.csv'))}
+    assert daily.keys() == trades.keys()
+    for key, r in daily.items():
+        assert int(r['official_trades']) == len(trades[key])
+        assert abs(float(r['official_bp']) - statistics.median(trades[key])) <= .1
+        assert int(r['n_sign_from_reference']) == 0
 
 
 @needs_data
@@ -379,9 +383,9 @@ def test_blank_upfront_days_never_show_the_old_reading(date, old_bug):
 
 
 @needs_data
-def test_coreweave_is_labelled_as_model_implied():
+def test_any_coreweave_observations_have_a_declared_price_kind():
     kinds = {r['official_kind'] for r in csv.DictReader(open(CANON / 'cds_daily.csv')) if r['entity'] == 'CRWV'}
-    assert kinds <= {'upfront_implied', 'mixed', 'quoted'} and kinds  # whatever it is, it is stated
+    assert kinds <= {'upfront_implied', 'mixed', 'quoted'}  # zero accepted days is a valid outcome
 
 
 def test_no_unresolved_raw_file_conflicts():

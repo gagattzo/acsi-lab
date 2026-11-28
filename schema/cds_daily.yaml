@@ -6,17 +6,19 @@ key: [date, entity]
 columns:
   - {name: date, type: date}
   - {name: entity, type: enum, values: [ORCL, CRWV, META]}
-  - {name: official_bp, type: float, min: 10, max: 10000, unit: bp, description: "Official level: median par spread of all the day's priced trades"}
+  - {name: official_bp, type: float, finite: true, min: 0, unit: bp, description: "Research daily level: median nonnegative finite par spread of accepted trades; no empirical spread floor or ceiling"}
   - {name: official_kind, type: enum, values: [quoted, upfront_implied, mixed], description: "What the official level rests on: quoted spreads only, spreads implied from upfronts only (a model: flat hazard, 40% recovery, 4.5% rate), or both"}
   - {name: official_trades, type: int, min: 1, description: Trades in the official median}
-  - {name: quoted_median_bp, type: float, nullable: true, min: 10, max: 10000, unit: bp, description: Median of quoted spreads only (blank when none were quoted)}
+  - {name: quoted_median_bp, type: float, finite: true, nullable: true, min: 0, unit: bp, description: Median of accepted quoted spreads only (blank when none were quoted)}
   - {name: quoted_trades, type: int, min: 0}
-  - {name: upfront_implied_bp, type: float, nullable: true, min: 10, max: 10000, unit: bp, description: Median of upfront-implied spreads only (blank when none)}
+  - {name: upfront_implied_bp, type: float, finite: true, nullable: true, min: 0, unit: bp, description: Median of accepted upfront-implied spreads only (blank when none)}
   - {name: upfront_trades, type: int, min: 0}
-  - {name: loo_bp, type: float, nullable: true, min: 0, unit: bp, description: "Largest move in the official median from removing one trade (blank with one trade)"}
+  - {name: loo_bp, type: float, finite: true, nullable: true, min: 0, unit: bp, description: "Largest move in the official median from removing one trade (blank with one trade)"}
   - {name: last_trade, type: datetime}
-  - {name: n_capped, type: int, min: 0, description: "Trades whose notional shows the reporting cap (+); their upfront % is computed on the cap, and a check found no bias (median 0.5 bp)"}
+  - {name: n_capped, type: int, min: 0, description: "Accepted trades whose notional shows the reporting cap (+); payment fractions use the reported notional, so the actual fraction may differ"}
   - {name: n_percent_coupon_normalised, type: int, min: 0, description: "Trades whose coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
-  - {name: n_ambiguous, type: int, min: 0, description: "Upfront trades dropped because neither reading is plausible for the coupon, or both are and nothing tells them apart"}
-  - {name: n_sign_from_reference, type: int, min: 0, description: "Upfront trades whose sign was set by the reference (eligible quotes, else the previous level) because both readings were plausible for the coupon; 0 means every price that day was read from its trade alone"}
-  - {name: n_basket_legs, type: int, min: 0, description: "Eligible trades left out as legs of a basket: same upfront, to a millionth of notional, as a trade on another of our names within 120 seconds"}
+  - {name: n_ambiguous, type: int, min: 0, description: "Excluded unsigned-upfront trades with two distinct feasible nonnegative-hazard roots; quotes and prior levels cannot select a sign"}
+  - {name: n_sign_from_reference, type: int, min: 0, max: 0, description: "Compatibility field, always zero: reference-based sign selection is forbidden by this decoder"}
+  - {name: n_basket_legs, type: int, min: 0, description: "Eligible on-the-run standard-coupon CDS rows quarantined as suspected basket legs: matching upfront fraction across names within 120 seconds; heuristic, not proven basket membership"}
+  - {name: n_model_domain_errors, type: int, min: 0, description: "Excluded upfront trades with unsupported coupons, invalid model inputs, unbracketed roots or failed residual checks; numerical support limits do not prove a sign impossible"}
+  - {name: n_invalid_quotes, type: int, min: 0, description: "Excluded nonzero quote fields with nonfinite, nonpositive or unresolved-unit values"}

@@ -16,14 +16,14 @@ Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.
     a late report is priced on its execution day (weekdays only)
   - on-the-run 5-year maturity only (ISDA semi-annual roll, 20 Mar / 20 Sep)
   - coupons written in percent (1 = 1%) are divided by 100; only 0 < coupon <= 10% is kept (issue #7)
-  - quoted spreads as decimals (0.0365) or raw bp (365) are both read; only 10-5,000 bp is kept; 0 or blank = not quoted
+  - quoted spreads as decimals (0.0365) or raw bp (365) are both read; unresolved units rejected; 0 or blank = not quoted
   - an upfront is read only when Other payment type is UFRO (UWIN = unwind, not an entry price); blank = missing, not 0
   - upfront trades on a standard coupon (1% or 5%) converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate).
-    DTCC upfronts are unsigned, so each has two readings. A reading under the floor for its coupon (10 bp on 1%, 100 bp
-    on 5%) is impossible and the trade decides alone; otherwise the reading nearer the day's eligible quoted median
-    (or the previous level) wins, and n_sign_from_reference counts those trades
-  - basket legs out: an upfront that matches, to a millionth of notional, a trade on another of our names executed
-    within 120 seconds is one basket reported name by name, not a price (n_basket_legs)
+    DTCC upfronts are unsigned, so each has two readings. Two distinct feasible roots are ambiguous and excluded.
+    Only a root below zero hazard proves the alternative infeasible in this model; a numerical-domain failure blocks
+    the trade. Quotes and previous levels never select a sign. The fixed model is not an ISDA validation.
+  - suspected basket legs quarantined: eligible on-the-run CDS upfronts matching to a millionth of notional across
+    our names within 120 seconds. This is a heuristic, not proof of a basket (n_basket_legs).
   - quoted and upfront-implied spreads are kept in separate columns. Official level: the median of all the day's priced
     trades; official_kind says what it rests on (quoted, upfront_implied or mixed). Quoted-only was tested and rejected:
     on Oracle the two differ by a median 1.3 bp, and dropping implied prints more than doubles the days resting on
@@ -31,7 +31,12 @@ Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.
 
 Usage: python harness/dtcc.py [--days 400] [--offline]
 """
-import argparse, concurrent.futures as cf, csv, datetime as dt, hashlib, io, math, pathlib, statistics, sys, time, urllib.request, zipfile
+import argparse, concurrent.futures as cf, csv, datetime as dt, hashlib, io, json, math, pathlib, statistics, sys, time, urllib.request, zipfile
+
+try:
+    from .dtcc_lifecycle import resolve_lifecycle, validate_columns, validate_rows, SourceSchemaError
+except ImportError:
+    from dtcc_lifecycle import resolve_lifecycle, validate_columns, validate_rows, SourceSchemaError
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 URL = 'https://pddata.dtcc.com/ppd/api/report/cumulative/sec/SEC_CUMULATIVE_CREDITS_{}.zip'
@@ -47,7 +52,7 @@ TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread
                 'upfront_pct', 'notional_capped', 'sign_by']
 DAILY_FIELDS = ['date', 'entity', 'official_bp', 'official_kind', 'official_trades', 'quoted_median_bp', 'quoted_trades',
                 'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised',
-                'n_ambiguous', 'n_sign_from_reference', 'n_basket_legs']
+                'n_ambiguous', 'n_sign_from_reference', 'n_basket_legs', 'n_model_domain_errors', 'n_invalid_quotes']
 MAN_FIELDS = ['date', 'url', 'bytes', 'sha256', 'fetched_at']
 CONFLICT_FIELDS = ['date', 'manifest_sha256', 'new_sha256', 'new_bytes', 'path', 'fetched_at']
 
@@ -76,15 +81,16 @@ def coupon(v):
 
 
 def quoted_spread(v):
-    """Quoted par spread as a decimal, or None. Decimals (0.0365) and raw bp (365) both occur; 10-5,000 bp is kept."""
+    """Decode the observed decimal/raw-bp conventions, without an empirical spread floor.
+    Values in [0.5, 5) have unresolved units and are rejected, rather than guessed."""
     q = fnum(v)
     if not q or q <= 0:
         return None
     if q >= 5:
         q = q / 10000  # raw basis points
     elif q >= 0.5:
-        return None  # 0.5-5 is neither a plausible decimal spread nor a plausible bp figure
-    return q if 0.001 <= q <= 0.5 else None
+        return None
+    return q if math.isfinite(q) and q > 0 else None
 
 
 def ts(s):
@@ -135,9 +141,26 @@ def legs(lam, T, R=RECOVERY, r=RATE):
     return prot, rpv
 
 
-def spread_from_upfront(upfront, C, T, accr):
+def upfront_solution(upfront, C, T, accr):
+    """Invert only a bracketed, validated root of this simplified model.
+
+    The finite hazard domain is a numerical support limit, not an economic
+    impossibility test. Only a target below the zero-hazard PV proves that no
+    nonnegative-hazard root exists. Callers must keep these failures distinct.
+    """
+    if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in (upfront, C, T, accr)) or C <= 0 or T <= 0 or accr < 0:
+        return {'spread': None, 'error': 'invalid_model_input'}
     target = upfront + C * accr
-    lo, hi = 1e-6, 3.0
+    lo, hi, tol = 0.0, 3.0, 1e-10
+    p0, v0 = legs(lo, T)
+    p1, v1 = legs(hi, T)
+    lower, upper = p0 - C * v0, p1 - C * v1
+    if not all(math.isfinite(x) for x in (target, lower, upper)) or upper <= lower:
+        return {'spread': None, 'error': 'invalid_model_domain'}
+    if target < lower - tol:
+        return {'spread': None, 'error': 'no_nonnegative_hazard_root'}
+    if target > upper + tol:
+        return {'spread': None, 'error': 'outside_model_domain'}
     for _ in range(90):
         m = (lo + hi) / 2
         p, v = legs(m, T)
@@ -146,7 +169,14 @@ def spread_from_upfront(upfront, C, T, accr):
         else:
             hi = m
     p, v = legs((lo + hi) / 2, T)
-    return p / v
+    residual = p - C * v - target
+    if not (math.isfinite(p) and math.isfinite(v) and v > 0 and abs(residual) <= tol):
+        return {'spread': None, 'error': 'root_residual_failure'}
+    return {'spread': p / v, 'error': None}
+
+
+def spread_from_upfront(upfront, C, T, accr):
+    return upfront_solution(upfront, C, T, accr)['spread']
 
 
 def is_cds(r):
@@ -162,9 +192,6 @@ def is_cds(r):
 # non-standard and post-priced terms, other currencies, other seniorities and odd lots price nothing.
 MIN_NOTIONAL = 1_000_000
 STANDARD_COUPONS = (0.01, 0.05)
-# An unsigned upfront has two readings. The lower one is only plausible above this floor for its coupon: a name quoted on
-# a 5% coupon does not trade at 12 bp (that is the wrong sign of a 23% upfront), and nothing trades under 10 bp.
-PLAUSIBLE_FLOOR = {0.01: 0.001, 0.05: 0.01}
 
 
 def _flag(v):
@@ -191,41 +218,39 @@ def standard_coupon(c):
     return next((s for s in STANDARD_COUPONS if c is not None and abs(c - s) < 1e-9), None)
 
 
-def resolve_upfront(hi, lo, c, ref, pct):
-    """(spread, decided_by) for an unsigned upfront, or (None, 'ambiguous'). DTCC does not publish who paid an upfront,
-    so a trade has two readings. A reading under the floor for its coupon is impossible (a 5%-coupon name at 12 bp is
-    the wrong sign of a 23% upfront), and then the trade decides alone. With two plausible readings the one nearer the
-    reference (the day's eligible quotes, else the last official level) is taken; with no reference, a large upfront (2%
-    or more) is read as wider than the coupon, and a small one is dropped."""
-    if abs(hi - lo) < 1e-9:
-        return hi, 'trade'  # a zero upfront: the spread is the coupon
-    floor = PLAUSIBLE_FLOOR.get(c)
-    if floor is None:
-        return None, 'ambiguous'
-    plausible = [x for x in (hi, lo) if floor <= x < 1]
-    if len(plausible) == 1:
-        return plausible[0], 'trade'
-    if not plausible:
-        return None, 'ambiguous'
-    if ref is not None:
-        return min(plausible, key=lambda x: abs(x - ref)), 'reference'
-    return (hi, 'large_upfront') if pct >= 0.02 else (None, 'ambiguous')
+def resolve_upfront(hi, lo, c=None, ref=None, pct=None):
+    """Resolve validated candidate roots, never infer payment direction from a reference.
+
+    Candidate dictionaries preserve why a root is absent. Bare numeric candidates
+    remain supported for diagnostics; a missing numeric root is not proof that its
+    sign is impossible. c/ref/pct are retained only for caller compatibility.
+    """
+    candidates = [x if isinstance(x, dict) else {'spread': x, 'error': None if isinstance(x, (int, float)) and math.isfinite(x) and x >= 0 else 'unknown_root_failure'} for x in (hi, lo)]
+    if any(x['error'] not in (None, 'no_nonnegative_hazard_root') or
+           (x['error'] is None and not (isinstance(x['spread'], (int, float)) and math.isfinite(x['spread']) and x['spread'] >= 0)) for x in candidates):
+        return None, 'model_domain_error'
+    valid = [x['spread'] for x in candidates if x['error'] is None and x['spread'] is not None]
+    if not valid:
+        return None, 'model_domain_error'
+    if len(valid) == 1 or abs(valid[0] - valid[1]) < 1e-9:
+        return valid[0], 'trade'
+    return None, 'ambiguous'
 
 
 BASKET_SECONDS = 120
 
 
 def basket_legs(rows):
-    """Dissemination ids of upfront trades that share their upfront (to a millionth of notional) with a trade on another of
-    our names executed within BASKET_SECONDS: legs of one basket reported name by name, not single-name prices. On
-    21 Sep 2026 six such legs priced Oracle at 145 bp; its other trades said 205-208 and the next day's quotes 212-215."""
+    """Quarantine suspected basket legs among otherwise eligible on-the-run CDS rows.
+    Matching payment fractions and timing do not prove that trades form a basket."""
     ups = []
     for r in rows:
         e = entity_of(r)
-        if not e or not eligible(r) or str(r.get('Other payment type', '')).strip().upper() != 'UFRO':
+        if not e or not eligible(r) or not is_cds(r) or not standard_coupon(coupon(r.get('Fixed rate-Leg 1'))[0]) or str(r.get('Other payment type', '')).strip().upper() != 'UFRO':
             continue
         n, amt, ex = fnum(r.get('Notional amount-Leg 1')), fnum(r.get('Other payment amount')), ts(r.get('Execution Timestamp'))
-        if n and n > 0 and amt and ex is not None:
+        exp = ts(str(r.get('Expiration Date', '')) + 'T00:00:00Z')
+        if n and n > 0 and amt and ex is not None and exp == on_the_run_5y(ex):
             ups.append((abs(amt / n), ex, e, r.get('Dissemination Identifier')))
     out = set()
     for i, a in enumerate(ups):
@@ -242,62 +267,52 @@ def entity_of(r):
 
 
 def slim(rows):
-    """What the ledger needs from one file: every cancellation id, and the new and corrected trades of our names."""
-    return ({r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier') for r in rows if r.get('Action type') == 'EROR'},
-            [r for r in rows if r.get('Action type') in ('NEWT', 'CORR') and entity_of(r)])
+    """Keep lifecycle events before entity/eligibility filtering.
+
+    A correction can remove a tracked name, change currency or invalidate terms;
+    filtering it first would resurrect the original price.
+    """
+    return ({r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier')
+             for r in rows if r.get('Action type') == 'EROR'}, list(rows))
 
 
-def ledger(files):
-    """files: [(file_day, (cancelled_ids, rows))] in date order. Applies every cancellation and correction in the window,
-    whichever later file it arrives in, and returns the surviving trades grouped by execution date (weekdays)."""
-    cancelled = set().union(*(f[1][0] for f in files)) if files else set()
-    keep = {}
-    for _, (_, rows) in files:
-        for r in rows:
-            act = r.get('Action type')
-            key = (r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier')) if act == 'CORR' else r.get('Dissemination Identifier')
-            if key in cancelled or r.get('Dissemination Identifier') in cancelled:
-                continue
-            if act == 'NEWT' and key in keep:
-                continue
-            keep[key] = r
-    by_day = {}
-    for r in keep.values():
+class LedgerDays(dict):
+    """Execution-day rows, with aggregate bounded-ledger quality diagnostics."""
+
+
+def ledger(files, track_all=False):
+    rows, quality = resolve_lifecycle([r for _, (_, rs) in files for r in rs], (lambda r: True) if track_all else entity_of)
+    by_day = LedgerDays()
+    for r in rows:
         d = str(r.get('Execution Timestamp', ''))[:10]
         try:
             if dt.date.fromisoformat(d).weekday() >= 5:
                 continue
         except ValueError:
+            quality['issue_counts']['invalid_execution_date'] = quality['issue_counts'].get('invalid_execution_date', 0) + 1
+            quality['status'] = 'partial'
             continue
         by_day.setdefault(d, []).append(r)
+    by_day.quality = quality
     return by_day
 
 
 def clean(rows, day):
-    cancelled = {r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier') for r in rows if r.get('Action type') == 'EROR'}
-    keep = {}
-    for r in rows:
-        act = r.get('Action type')
-        if act not in ('NEWT', 'CORR'):
-            continue
-        key = (r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier')) if act == 'CORR' else r.get('Dissemination Identifier')
-        if key in cancelled or r.get('Dissemination Identifier') in cancelled:
-            continue
-        if act == 'NEWT' and key in keep:
-            continue
-        keep[key] = r
-    return [r for r in keep.values() if str(r.get('Execution Timestamp', ''))[:10] == day]
+    return ledger([(day, slim(rows))], track_all=True).get(day, [])
 
 
-def parse_day(rows, day, prev, cleaned=False):
+def parse_day(rows, day, prev, cleaned=False, quality=None):
     """Returns (levels, trades): levels[entity] = daily row; trades = list of canonical trade rows.
-    rows are one file's rows (cleaned here, same-day executions only) or, with cleaned=True, a ledger day."""
+    rows are one file's rows (cleaned here, same-day executions only) or, with cleaned=True, a ledger day.
+    If supplied, quality receives diagnostics for every entity, including days with no accepted price."""
     if not cleaned:
         rows = clean(rows, day)
     baskets = basket_legs(rows)
     levels, trades = {}, []
     for eid, (match, red) in ENTITIES.items():
         quoted, ups, n_basket = [], [], 0
+        reasons, candidates = set(), []
+        n_invalid, n_domain = 0, 0
         for r in rows:
             text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' + str(r.get('Underlier ID-Leg 1', ''))).upper()
             if not ((match in text or red in text) and is_cds(r) and eligible(r)):
@@ -307,6 +322,7 @@ def parse_day(rows, day, prev, cleaned=False):
                 continue
             if r.get('Dissemination Identifier') in baskets:
                 n_basket += 1
+                reasons.add('suspected_basket_leg')
                 continue
             C, norm = coupon(r.get('Fixed rate-Leg 1'))
             step = ex + DAY
@@ -319,24 +335,45 @@ def parse_day(rows, day, prev, cleaned=False):
             meta = {'dissemination_id': r.get('Dissemination Identifier', ''), 'exec_ts': r.get('Execution Timestamp', ''),
                     'coupon': standard_coupon(C) or C, 'coupon_normalised': norm, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
             q = quoted_spread(r.get('Spread-Leg 1'))
-            if fnum(r.get('Spread-Leg 1')):
+            raw_quote = str(r.get('Spread-Leg 1') or '').strip()
+            # Zero is the source's no-quote sentinel, not a priced observation.
+            if raw_quote and fnum(raw_quote) != 0:
                 if q is not None:
                     quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(abs(pct) * 100, 4))))
+                else:
+                    n_invalid += 1
+                    reasons.add('invalid_or_unresolved_quote_units')
             elif pct is not None and standard_coupon(C):
                 C = standard_coupon(C)
-                ups.append((spread_from_upfront(abs(pct), C, T, accr), spread_from_upfront(-abs(pct), C, T, accr), abs(pct), ex,
+                ups.append((upfront_solution(abs(pct), C, T, accr), upfront_solution(-abs(pct), C, T, accr), abs(pct), ex,
                             dict(meta, kind='upfront', upfront_pct=round(abs(pct) * 100, 4))))
-        # Reference for two plausible readings: the day's eligible quotes (a $1 or odd-lot quote is not eligible), else
-        # the last official level.
-        ref = statistics.median([x[0] for x in quoted]) if quoted else (prev[eid] / 10000 if prev.get(eid) else None)
-        implied, n_amb, n_ref = [], 0, 0
+            elif pct is not None:
+                n_domain += 1
+                reasons.add('unsupported_coupon')
+            else:
+                reasons.add('missing_price')
+        implied, n_amb = [], 0
         for hi, lo, p, ex, meta in ups:
-            s, by = resolve_upfront(hi, lo, meta['coupon'], ref, p)
+            candidates.extend(x['spread'] for x in (hi, lo) if x['error'] is None)
+            s, by = resolve_upfront(hi, lo)
             if s is None:
-                n_amb += 1
+                if by == 'ambiguous':
+                    n_amb += 1
+                    reasons.add('ambiguous_upfront_sign')
+                else:
+                    n_domain += 1
+                    reasons.update(x['error'] for x in (hi, lo) if x['error'] not in (None, 'no_nonnegative_hazard_root'))
+                    reasons.add('model_domain_error')
                 continue
-            n_ref += by != 'trade'
             implied.append((s, ex, dict(meta, sign_by=by)))
+        diagnostic = {'accepted_trades': len(quoted) + len(implied), 'ambiguous': n_amb, 'model_domain_errors': n_domain,
+                      'invalid_quotes': n_invalid, 'basket_legs': n_basket,
+                      'candidate_interval_bp': {'low': round(min(candidates) * 10000, 1), 'high': round(max(candidates) * 10000, 1)} if candidates else None,
+                      'reasons': sorted(reasons)}
+        if not diagnostic['accepted_trades']:
+            diagnostic['reasons'] = sorted(set(diagnostic['reasons']) | {'no_accepted_price'})
+        if quality is not None:
+            quality[eid] = diagnostic
         if not quoted and not implied:
             continue
         official = quoted + implied
@@ -353,15 +390,23 @@ def parse_day(rows, day, prev, cleaned=False):
                        'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat(),
                        'n_capped': sum(1 for x in official if x[2]['notional_capped']),
                        'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised']),
-                       'n_ambiguous': n_amb, 'n_sign_from_reference': n_ref, 'n_basket_legs': n_basket}
+                       'n_ambiguous': n_amb, 'n_sign_from_reference': 0, 'n_basket_legs': n_basket,
+                       'n_model_domain_errors': n_domain, 'n_invalid_quotes': n_invalid}
         for s, ex, meta in official:
             trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
     return levels, trades
 
 
 def rows_of(b):
-    z = zipfile.ZipFile(io.BytesIO(b))
-    return list(csv.DictReader(io.StringIO(z.read(z.namelist()[0]).decode('utf-8', 'replace'))))
+    """Strict source schema, including valid empty files; renamed fields never mean no trades."""
+    with zipfile.ZipFile(io.BytesIO(b)) as z:
+        reader = csv.DictReader(io.StringIO(z.read(z.namelist()[0]).decode('utf-8-sig')), strict=True)
+        validate_columns(reader.fieldnames)
+        rows = list(reader)
+    if any(None in r or any(v is None for v in r.values()) for r in rows):
+        raise SourceSchemaError('DTCC row width does not match header')
+    validate_rows(rows)
+    return rows
 
 
 def valid_zip(b):
@@ -472,20 +517,60 @@ def main():
 
     added, conflicts = check_provenance(days, blobs, raw, man_path, ROOT / 'manifests' / 'dtcc_conflicts.csv')
 
-    # One ledger over every file: a cancellation or correction applies whichever later file it arrives in, and a trade
-    # reported late is priced on the day it was executed.
-    by_day = ledger([(d, slim(rows_of(blobs[d]))) for d in days if blobs[d]])
-    first = min((d for d in days if blobs[d]), default=None)
-    prev, daily, trades = {}, [], []
-    for d in sorted(x for x in by_day if first and x >= first):
-        lv, tr = parse_day(by_day[d], d, prev, cleaned=True)
+    parsed, invalid = {}, []
+    for d in days:
+        if not blobs[d]:
+            continue
+        try:
+            parsed[d] = rows_of(blobs[d])
+        except (SourceSchemaError, UnicodeError, csv.Error, zipfile.BadZipFile, IndexError):
+            invalid.append(d)
+    by_day = ledger([(d, slim(rows)) for d, rows in sorted(parsed.items())])
+    missing = [d for d in days if not blobs[d] and not any(c['date'] == d for c in conflicts)]
+    reasons = []
+    if missing:
+        reasons.append('requested_file_unavailable')
+    if invalid:
+        reasons.append('invalid_source_file')
+    if conflicts:
+        reasons.append('source_hash_conflict')
+    if by_day.quality['status'] != 'complete':
+        reasons.append('lifecycle_quarantine')
+    status = 'invalid' if invalid or conflicts else 'unavailable' if not parsed else 'partial' if reasons else 'complete'
+    source_quality = {'status': status, 'calculation_eligible': status == 'complete', 'reasons': reasons,
+                      'scope': 'requested_files_in_bounded_window', 'requested_dates': days,
+                      'available_dates': sorted(parsed), 'missing_dates': missing, 'invalid_dates': invalid,
+                      'conflict_dates': [c['date'] for c in conflicts], 'lifecycle': by_day.quality,
+                      'bounded_history': True, 'point_in_time_verified': False, 'settlement_eligible': False}
+    quality_path = canon / 'cds_source_quality.json'
+    quality_doc = {'decoder_version': 'dtcc-strict-v1', 'research_only': True,
+                   'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source_quality': source_quality}
+    quality_path.write_text(json.dumps(quality_doc, indent=2, sort_keys=True) + '\n')
+    if status in ('invalid', 'unavailable'):
+        raise SystemExit('DTCC source ' + status + ': canonical price files preserved; see cds_source_quality.json')
+
+    first = min(parsed, default=None)
+    prev, daily, trades, diagnostics = {}, [], [], {}
+    for d in sorted(set(parsed) | {x for x in by_day if first and x >= first}):
+        day_quality = {}
+        lv, tr = parse_day(by_day.get(d, []), d, prev, cleaned=True, quality=day_quality)
+        diagnostics[d] = day_quality
         for eid, v in lv.items():
             prev[eid] = v['official_bp']
             daily.append(v)
         trades.extend(tr)
+    quality_doc['pricing_quality'] = diagnostics
     for name, fields, rows in (('cds_daily.csv', DAILY_FIELDS, daily), ('cds_trades.csv', TRADE_FIELDS, trades)):
-        with open(canon / name, 'w', newline='') as f:
+        tmp = canon / (name + '.tmp')
+        with open(tmp, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=fields); w.writeheader(); w.writerows(rows)
+        tmp.replace(canon / name)
+    quality_doc['canonical_sha256'] = {name: hashlib.sha256((canon / name).read_bytes()).hexdigest()
+                                       for name in ('cds_daily.csv', 'cds_trades.csv')}
+    quality_tmp = quality_path.with_suffix('.json.tmp')
+    quality_tmp.write_text(json.dumps(quality_doc, indent=2, sort_keys=True) + '\n')
+    quality_tmp.replace(quality_path)
+    print('DTCC source quality: ' + status + '; research candidate only; settlement eligible: false', file=sys.stderr)
     print(f'{sum(1 for d in days if blobs[d])} raw files (hashes checked, {added} new, {len(conflicts)} conflicts), '
           f'{len(daily)} entity-days, {len(trades)} priced trades -> data/canonical/', file=sys.stderr)
 

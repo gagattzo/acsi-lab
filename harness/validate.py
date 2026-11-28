@@ -3,7 +3,7 @@
   python harness/validate.py schema/cds_trades.yaml schema/cds_daily.yaml
 Exit code 1 on any error.
 """
-import csv, datetime as dt, pathlib, sys
+import csv, datetime as dt, math, pathlib, sys
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -14,11 +14,13 @@ def check(schema_path):
     path = ROOT / s['file']
     if not path.exists():
         return [f"{s['table']}: {s['file']} missing (run {s.get('built_by', 'the loader')})"]
-    rows = list(csv.DictReader(open(path)))
+    with open(path, newline='') as f:
+        reader = csv.DictReader(f)
+        head = reader.fieldnames or []
+        rows = list(reader)
     cols = [c['name'] for c in s['columns']]
     errs = []
-    head = list(rows[0].keys()) if rows else []
-    if rows and head != cols:
+    if head != cols:
         errs.append(f"{s['table']}: columns {head} != schema {cols}")
     seen = set()
     for i, r in enumerate(rows, start=2):
@@ -37,6 +39,9 @@ def check(schema_path):
                     dt.datetime.fromisoformat(v.replace('Z', '+00:00'))
                 elif t in ('float', 'int'):
                     x = float(v) if t == 'float' else int(v)
+                    if t == 'float' and not math.isfinite(x):
+                        errs.append(where + ': non-finite number')
+                        continue
                     if 'min' in c and x < c['min']:
                         errs.append(where + f": below {c['min']}")
                     if 'max' in c and x > c['max']:

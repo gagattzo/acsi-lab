@@ -24,24 +24,10 @@ jobs:
           path: data/raw/dtcc
           key: dtcc-raw-${{ github.run_id }}
           restore-keys: dtcc-raw-
-      - run: python harness/dtcc.py --days 400
-      - name: Score every method
-        run: |
-          python - <<'PY'
-          import glob, json, subprocess, datetime, pathlib
-          out = []
-          for f in sorted(glob.glob('methods/*.yaml')):
-              j = f'/tmp/{pathlib.Path(f).stem}.json'
-              # registered = the day the file first reached main; the forward test only counts days after it
-              reg = subprocess.run(['git', 'log', '--diff-filter=A', '--follow', '--format=%as', '--', f], capture_output=True, text=True).stdout.split()
-              args = ['python', 'harness/score.py', f, '--json', j] + (['--registered', reg[-1]] if reg else [])
-              if subprocess.run(args).returncode == 0:
-                  out.append(json.load(open(j))['method'])
-          pathlib.Path('scoreboard').mkdir(exist_ok=True)
-          json.dump({'updated': datetime.date.today().isoformat(), 'methods': out}, open('scoreboard/scoreboard.json', 'w'), indent=2)
-          PY
+      - name: Refresh scoreboard only from complete, hash-bound inputs
+        run: python harness/refresh_scoreboard.py --collect --days 400
       - run: |
           git config user.name 'acsi-lab bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add scoreboard/scoreboard.json manifests/dtcc_sha256.csv
-          git diff --cached --quiet || (git commit -m 'Scoreboard: re-score all methods, extend the raw-file manifest' && git push)
+          git add scoreboard/scoreboard.json scoreboard/last_attempt.json manifests/dtcc_sha256.csv
+          git diff --cached --quiet || (git commit -m 'Scoreboard: record source-checked research refresh status' && git push)

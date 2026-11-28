@@ -17,7 +17,10 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.holiday import AbstractHolidayCalendar, USFederalHolidayCalendar, GoodFriday
+try:
+    from .bond_provenance import prepare_private_snapshot, verify_collection, publication_authorization
+except ImportError:
+    from bond_provenance import prepare_private_snapshot, verify_collection, publication_authorization
 
 ROOT = Path(__file__).resolve().parent.parent
 METHOD = 'bond-research-v1'
@@ -190,11 +193,17 @@ def process_daily_bond_spreads(df_trades, universe, treasury_curve, max_carry_da
                  'missing_treasury' if day not in treasury_curve else 'incomplete_coverage')
         eq = sum(values.values())/len(universe) if complete else None
         cap = sum(weights[g]*sum(group_values[g])/len(group_values[g]) for g in groups) if complete else None
+        inputs = [x['daily_inputs'][-1] for x in info.values()]
+        fresh_weight = sum(r['fixed_weight'] for r in inputs if r['status']=='active')
+        carried_weight = sum(r['fixed_weight'] for r in inputs if r['status']=='carried')
         series.append({'date':day,'method_version':METHOD,'status':status,'settlement_eligible':False,
                        'g_spread_equal_weighted_bp':round(eq,1) if eq is not None else None,
                        'g_spread_issuer_capped_bp':round(cap,1) if cap is not None else None,
                        'active_bonds_count':len(values),'active_issuers_count':len(group_values),
                        'basket_size':len(universe),'issuer_count':len(groups),'bonds_traded_today':today,
+                       'fresh_fixed_weight':round(fresh_weight,12),
+                       'carried_fixed_weight':round(carried_weight,12),
+                       'coverage_fixed_weight':round(fresh_weight+carried_weight,12),
                        'carried_bonds_count':carried,'treasury_5y_yield':treasury_curve.get(day,{}).get(5)})
     return series, states, info
 
@@ -219,7 +228,7 @@ def export_public_safe_datasets(series, states, info, universe, output_dir, anch
     input_path=output_dir/'acsi_bond_inputs_daily.json'
     inputs=[r for x in info.values() for r in x.get('daily_inputs',[])]
     if input_path.exists() and inputs:
-        old_inputs=json.loads(input_path.read_text()); retained={r['date'] for r in series if r.get('historical_input_retained')}
+        old_inputs=json.loads(input_path.read_text()); retained={r['date'] for r in series if r.get('historical_input_retained') or r.get('retained_after_source_failure')}
         inputs=[r for r in old_inputs if r.get('method_version')==METHOD and r['date'] in retained]+[r for r in inputs if r['date'] not in retained]
     atomic_json(input_path,inputs)
     atomic_json(output_dir/'acsi_bond_universe_latest.json',public)
@@ -248,6 +257,48 @@ def preserve_prior_history(series, path, df):
     return [current[d] for d in sorted(current)]
 
 
+def apply_publication_gate(series, previous, blockers=(), private_replay=False):
+    """Separate calculation evidence, a failed refresh and previously accepted dates."""
+    output = []
+    for computed in series:
+        row = dict(computed)
+        row['calculation_status'] = row.get('calculation_status', row['status'])
+        row['settlement_eligible'] = False
+        row['perp_eligible'] = False
+        row['publication_blockers'] = list(blockers)
+        if private_replay:
+            row.update(private_candidate=True, publication_eligible=False)
+            row['publication_blockers'] = list(dict.fromkeys(['private_replay'] + list(blockers)))
+        elif blockers:
+            prior = previous.get(row['date'])
+            if (prior and prior.get('method_version') == METHOD
+                    and prior.get('publication_eligible') is True
+                    and prior.get('status') == 'complete_research'
+                    and all(prior.get(k) is not None for k in
+                            ('g_spread_equal_weighted_bp', 'g_spread_issuer_capped_bp'))):
+                # Retaining an accepted observation does not turn the failed attempt
+                # into its source. Preserve original values, dates and provenance.
+                row = {**prior, 'retained_after_source_failure': True,
+                       'refresh_calculation_status': computed['status'],
+                       'refresh_blockers': list(blockers), 'settlement_eligible': False,
+                       'perp_eligible': False}
+            else:
+                row.update(status=blockers[0], publication_eligible=False,
+                           g_spread_equal_weighted_bp=None, g_spread_issuer_capped_bp=None)
+        else:
+            row['publication_eligible'] = row['status'] == 'complete_research'
+        output.append(row)
+    return output
+
+
+def private_output_path(path):
+    """Prevent private replay from overwriting the public static data directory."""
+    path = Path(path).resolve()
+    if path == ROOT / 'data' or path.is_relative_to(ROOT / 'data'):
+        raise ValueError('Private replay requires --out outside the public data directory')
+    return path
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--trades',default='private_data/trace_trades_clean.parquet')
@@ -256,11 +307,20 @@ def main():
     p.add_argument('--as-of',help='Explicit expected market session for reproducible research replay')
     p.add_argument('--treasury-file',help='Dated official Treasury CSV for offline reproduction')
     p.add_argument('--default-events',default='config/default_events.json')
+    p.add_argument('--private-replay',action='store_true',help='Calculate saved portal snapshots privately; never creates a publishable fixing')
+    p.add_argument('--publication-authorization',help='Separate reviewed public-derived-research rights record; never inferred from source metadata')
     args=p.parse_args()
+    out = private_output_path(args.out) if args.private_replay else Path(args.out)
+    if args.private_replay and (not args.as_of or not args.treasury_file):
+        p.error('--private-replay requires --as-of and --treasury-file for reproducibility')
     df=pd.read_parquet(args.trades); universe=json.loads(Path(args.universe).read_text())
-    previous_path=Path(args.out)/'acsi_bond_spreads_daily.json'
+    if args.private_replay:
+        df=prepare_private_snapshot(df)
+    previous_path=out/'acsi_bond_spreads_daily.json'
     previous={r['date']:r for r in json.loads(previous_path.read_text()) if r.get('method_version')==METHOD and r.get('publication_eligible')} if previous_path.exists() else {}
-    if df.empty: raise SystemExit('No trade observations: preserve prior public artifacts')
+    manifest_path=out/'acsi_bond_manifest.json'
+    prior_manifest=json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    if df.empty: raise SystemExit('No trade observations: preserve prior artifacts')
     anchor=args.as_of or expected_session()
     if args.treasury_file:
         curve=parse_treasury(Path(args.treasury_file).read_text()); errors=[]
@@ -270,42 +330,67 @@ def main():
     if not Path(args.default_events).exists(): raise SystemExit('Default-event registry missing: preserve prior artifacts')
     defaults=json.loads(Path(args.default_events).read_text())['events']
     series,states,info=process_daily_bond_spreads(df,universe,curve,anchor_date=anchor,default_events=defaults)
-    if not series: raise SystemExit('No session observations: preserve prior public artifacts')
-    series=preserve_prior_history(series,Path(args.out)/'acsi_bond_spreads_daily.json',df)
+    if not series: raise SystemExit('No session observations: preserve prior artifacts')
+    calculated_latest=dict(series[-1])
+    if not args.private_replay:
+        series=preserve_prior_history(series,previous_path,df)
     collection_path=Path(args.trades).parent/'trace_collection_manifest.json'
     collection=json.loads(collection_path.read_text()) if collection_path.exists() else {}
+    verification=verify_collection(df,universe,collection,collection_path.parent)
+    rights_record=json.loads(Path(args.publication_authorization).read_text()) if args.publication_authorization else None
+    authorization=publication_authorization(rights_record,anchor)
+    blockers=(['treasury_fetch_error'] if errors else []) + verification['blockers'] + authorization['blockers']
+    quality=blockers[0] if blockers else calculated_latest['status']
+    series=apply_publication_gate(series,previous,blockers,args.private_replay)
+    complete=[r for r in series if r.get('publication_eligible')]
     source_date=str(df.loc[df.tradeExecutionDate.le(anchor), 'tradeExecutionDate'].max()) if df.tradeExecutionDate.le(anchor).any() else None
-    complete=[r for r in series if r['status']=='complete_research']
-    quality=series[-1]['status']
-    if errors: quality='treasury_fetch_error'
-    if not collection: quality='collection_provenance_unverified'
-    elif collection.get('status') not in {'complete','success','ok','research_snapshot'}: quality='collection_error'
-    if quality in {'treasury_fetch_error','collection_provenance_unverified','collection_error'}:
-        # Failure cannot mint a new fixing from a mixture of cached and fresh inputs.
-        for idx,row in enumerate(series):
-            if row['date'] in previous:
-                series[idx]=previous[row['date']]
-            else:
-                row.update(status=quality,g_spread_equal_weighted_bp=None,g_spread_issuer_capped_bp=None,publication_eligible=False)
-        complete=[r for r in series if r['status']=='complete_research']
-    for row in series:
-        row['publication_eligible']=row['status']=='complete_research' and row['g_spread_issuer_capped_bp'] is not None
     now=datetime.now(timezone.utc).isoformat()
+    source_verified=verification['status']=='verified_snapshot'
+    last_success=(collection.get('completed_at') or collection.get('fetched_at')) if source_verified else prior_manifest.get('last_successful_collection_at')
+    source_fetched=collection.get('fetched_at') if source_verified else prior_manifest.get('source_fetched_at') if prior_manifest.get('last_successful_collection_at') else None
     manifest={'method_version':METHOD,'generated_at':now,'updated_at':now,
       'as_of':source_date,'source_market_date':source_date,'expected_session':anchor,'expected_market_date':anchor,
-      'status':quality,'quality_status':quality,'settlement_eligible':False,'perp_eligible':False,'publication_eligible':quality=='complete_research',
+      'status':'private_replay' if args.private_replay else quality,'quality_status':quality,
+      'calculation_status':calculated_latest['status'],
+      'collection_status':collection.get('status','unverified'),
+      'collection_verification_status':verification['status'],
+      'publication_authorization_status':authorization['status'],
+      'publication_authorization_sha256':authorization.get('record_sha256'),
+      'last_collection_attempt_at':collection.get('attempted_at') or collection.get('fetched_at'),
+      'last_successful_collection_at':last_success,
+      'settlement_eligible':False,'perp_eligible':False,
+      'publication_eligible':not args.private_replay and not blockers and calculated_latest['status']=='complete_research',
+      'publication_blockers':(['private_replay'] if args.private_replay else []) + blockers,
+      'private_candidate':args.private_replay,'point_in_time_history_verified':False,
       'latest_complete_date':complete[-1]['date'] if complete else None,
+      'latest_calculated_complete_date':max((r['date'] for r in series if r.get('calculation_status')=='complete_research'),default=None),
       'basket_size':len(universe),'issuer_count':len(set(issuer_group(b) for b in universe)),
-      'active_bonds_count':series[-1]['active_bonds_count'],'active_issuers_count':series[-1]['active_issuers_count'],'carried_bonds_count':series[-1]['carried_bonds_count'],
+      'active_bonds_count':calculated_latest['active_bonds_count'],'active_issuers_count':calculated_latest['active_issuers_count'],'carried_bonds_count':calculated_latest['carried_bonds_count'],
+      'fresh_fixed_weight':calculated_latest['fresh_fixed_weight'],
+      'carried_fixed_weight':calculated_latest['carried_fixed_weight'],
+      'coverage_fixed_weight':calculated_latest['coverage_fixed_weight'],
       'minimum_customer_trade_size':MIN_SIZE,'minimum_eligible_prints':MIN_PRINTS,'max_carry_sessions':MAX_CARRY,
-      'treasury_errors':errors,'source_fetched_at':collection.get('fetched_at') or collection.get('completed_at'),
+      'treasury_errors':errors,'source_fetched_at':source_fetched,
+      'input_sha256':hashlib.sha256(Path(args.trades).read_bytes()).hexdigest(),
+      'snapshot_hashes':verification.get('snapshot_hashes',[]),
       'warnings':['Research only: portal snapshots do not establish cancellation/correction lineage or a complete historical tape.',
                   'Median reported yields minus same-date interpolated Treasury par yields; reported yield-to-call/maturity conventions are not independently verified.',
                   'Equal issuer weights do not remove common tenant or guarantor exposure. No rating is assigned to the basket.',
                   'No default/recovery fixing rule is calibrated: a declared default freezes basket publication pending methodology review.',
                   'Partial historical baskets have no published level; changes require the same fixed universe and method.']}
-    export_public_safe_datasets(series,states,info,universe,Path(args.out),anchor,manifest)
-    print(json.dumps({'as_of':source_date,'expected_session':anchor,'status':quality,'latest':series[-1]}))
-    if quality!='complete_research': raise SystemExit(2)
+    if args.private_replay:
+        replay_paths={'raw_tape':Path(args.trades),'universe':Path(args.universe),
+                      'treasury':Path(args.treasury_file),'calendar':ROOT/'config/bond_calendar.json',
+                      'default_events':Path(args.default_events),'calculator':Path(__file__),
+                      'snapshot_adapter':Path(__file__).with_name('bond_provenance.py'),
+                      'snapshot_cleaner':Path(__file__).with_name('finra_trace.py')}
+        manifest['replay_input_hashes']={name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in replay_paths.items()}
+    export_public_safe_datasets(series,states,info,universe,out,anchor,manifest)
+    print(json.dumps({'as_of':source_date,'expected_session':anchor,'status':manifest['status'],
+                      'calculation_status':manifest['calculation_status'],
+                      'publication_eligible':manifest['publication_eligible'],'latest':series[-1]}))
+    # A deliberate private replay may succeed as a calculation while its source is
+    # unverified. Public/collection runs still return failure for blocked release.
+    if not args.private_replay and quality!='complete_research': raise SystemExit(2)
 
 if __name__=='__main__': main()

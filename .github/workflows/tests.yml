@@ -1,11 +1,16 @@
-# Runs the data tests on every push and pull request: unit tests on the cleaning rules, then the full pipeline on
-# real DTCC files (hashes checked against manifests/dtcc_sha256.csv) and the schema checks.
-# Pull requests from forks run with a read-only token and no secrets.
+# Deterministic regressions on every change. Live-source integration is an explicit
+# dispatch, so a market-source outage is not confused with a code regression.
 name: tests
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_source_integration:
+        description: 'Fetch DTCC history and run source/schema integration checks'
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -18,8 +23,22 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-dev.txt -r requirements-bonds.txt
-      - name: Unit tests (no data needed)
-        run: python -m pytest -q tests -k "not canonical and not manifest and not published"
+      - name: Offline regressions (data-dependent checks report skipped)
+        run: python -m pytest -q tests
+      - name: Report validation scope
+        run: |
+          echo '### Offline code validation' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No new source data collected. Passing unit tests does not establish full-history validation or settlement readiness.' >> "$GITHUB_STEP_SUMMARY"
+  source-integration:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_source_integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt -r requirements-dev.txt -r requirements-bonds.txt
       - uses: actions/cache@v4
         with:
           path: data/raw/dtcc
@@ -27,6 +46,14 @@ jobs:
           restore-keys: dtcc-raw-
       - name: Build the canonical tables from DTCC
         run: python harness/dtcc.py --days 400
+      - name: Validate source completeness and canonical hashes
+        run: |
+          python - <<'PY'
+          from harness.refresh_scoreboard import source_gate, ROOT
+          _, reasons = source_gate(ROOT)
+          if reasons:
+              raise SystemExit('Source integration blocked: ' + ', '.join(reasons))
+          PY
       - run: python harness/validate.py schema/cds_trades.yaml schema/cds_daily.yaml
       - name: All tests on the built data
         run: python -m pytest -q tests

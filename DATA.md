@@ -37,6 +37,8 @@ python harness/score.py methods/v0.1-live.yaml     # score a method
 | Raw-file hashes, committed | Someone, or a republished file, quietly changing history |
 | One test per cleaning rule | A fix for one quirk silently undoing another |
 | Schemas with ranges | Garbage reaching the median. The schema check caught a 0.01 bp "spread" on CoreWeave, 6 Feb 2026 |
+| Source-quality sidecar with canonical hashes | Partial source windows, quarantined lifecycles or mismatched CSVs cannot replace the accepted scoreboard |
+| Explicit unsigned-upfront ambiguity | A nearby quote or previous mark cannot choose between two valid model prices |
 | Features only, no code in methods | Heuristics nobody can check, and code that runs on the maintainers' machines |
 | Scores on daily changes, not levels | Two trending series always look correlated |
 | Stability by half | A method fitted to one stretch of history |
@@ -48,7 +50,7 @@ python harness/score.py methods/v0.1-live.yaml     # score a method
 | Quirk | Status | Test |
 | --- | --- | --- |
 | A blank upfront read as 0 priced trades at their coupon | fixed 26 Nov 2026, also on the live site | `test_blank_upfront_is_missing_not_zero` |
-| The impossible sign of an unsigned upfront could be taken | fixed 26 Nov 2026, also on the live site | `test_infeasible_upfront_reading_is_never_taken` |
+| Coupon-dependent spread floors were treated as payment-direction proof | replaced by strict root/domain checks; ambiguous two-root rows are excluded | `tests/test_dtcc_pricing_quality.py` |
 | Coupons written in percent (1 = 1%) drop the trade | fixed 26 Nov 2026 (issue #7): 48 Oracle and 9 Meta trades recovered | `test_percent_coupon_is_normalised` |
 | Unwind payments (UWIN) read as upfronts | fixed 26 Nov 2026: 26 Oracle trades removed | `test_unwind_payment_is_not_an_upfront` |
 | Quoted spreads sometimes in raw bp (365, not 0.0365) | handled; 1 Meta record in a year | `test_quoted_spread_in_raw_bp_is_read_as_bp` |
@@ -61,6 +63,19 @@ CoreWeave has no quoted on-the-run 5-year print in the year: every CoreWeave lev
 `research/findings/2026-11-26-p0-tape-hygiene.md`.
 
 Field-by-field decoding of the raw file: `research/sources/dtcc-sbsr-credits.md`.
+
+## Current quality and revision contract
+
+`cds_source_quality.json` records the decoder version, source attempt time, requested/available/missing dates,
+lifecycle quarantine and pricing exclusions. After both canonical files are written it binds them by SHA-256.
+Incomplete source windows remain explicitly incomplete, even when some research prices can be calculated.
+The scoreboard runner requires complete source status and matching canonical hashes, and publishes all methods
+together; a blocked run preserves the preceding scoreboard and writes a separate attempt record.
+
+The request-time CDS series is revisable research, not an immutable fixing. The separate
+[research-fixing contract](docs/research-fixings-v1.md) freezes a candidate, method and input hashes at explicit
+cutoff/publication times; subsequent corrections are linked vintages, never overwrites. Neither hashing nor an
+old observation date proves point-in-time availability. Institutional and settlement eligibility remain false.
 
 ## Adding a source
 
