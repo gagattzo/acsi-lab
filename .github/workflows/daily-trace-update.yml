@@ -17,7 +17,7 @@ permissions:
 jobs:
   update-trace:
     if: github.repository == 'gagattzo/Ai-credit-stress-index-'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install -r requirements-bonds.txt
-          python -m playwright install --with-deps chromium
       - name: Validate pipeline regressions
         run: |
           python -m pytest -q tests
