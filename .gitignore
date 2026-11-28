@@ -7,3 +7,5 @@ proposed/
 private_data/
 *.pem
 !config/archive_public.pem
+
+source_archives/
