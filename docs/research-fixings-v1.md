@@ -1,5 +1,7 @@
 # Immutable research fixings v1
 
+For the consolidated, code-checked reference, read the [current index manual](current-index-manual.md). This document provides the component-specific detail.
+
 This release adds an executable fixing record, separate from the request-time website reading. It does **not** launch a tradable benchmark. All artifacts have `publication_authorized: false` and `settlement_eligible: false`. Private cash-bond candidates and CDS research use distinct `series_kind` and `series_id` values; the headline gap is not silently inserted into a credit-level series.
 
 ## What is frozen
