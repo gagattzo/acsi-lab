@@ -53,6 +53,7 @@ python harness/score.py methods/v0.1-live.yaml     # score a method
 | --- | --- | --- |
 | A blank upfront read as 0 priced trades at their coupon | fixed 26 Nov 2026, also on the live site | `test_blank_upfront_is_missing_not_zero` |
 | Coupon-dependent spread floors were treated as payment-direction proof | replaced by strict root/domain checks; ambiguous two-root rows are excluded | `tests/test_dtcc_pricing_quality.py` |
+| Two feasible upfront roots (every CoreWeave upfront since Oct 2025) | since `dtcc-attested-v3` the side of the coupon comes from the name's latest dated public CDS mark (`harness/sign_attestations.json`): at most 21 days old, at least 1.5x from the coupon, roots at least 2x apart; otherwise excluded. Ratings were tested and rejected ([evidence](research/findings/2026-11-28-coreweave-public-marks.md)) | `tests/test_dtcc_attested_side.py` |
 | Coupons written in percent (1 = 1%) drop the trade | fixed 26 Nov 2026 (issue #7): 48 Oracle and 9 Meta trades recovered | `test_percent_coupon_is_normalised` |
 | Unwind payments (UWIN) read as upfronts | fixed 26 Nov 2026: 26 Oracle trades removed | `test_unwind_payment_is_not_an_upfront` |
 | Quoted spreads sometimes in raw bp (365, not 0.0365) | handled; 1 Meta record in a year | `test_quoted_spread_in_raw_bp_is_read_as_bp` |

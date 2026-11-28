@@ -1,0 +1,18 @@
+{
+  "schema": "acsi-sign-attestations-v1",
+  "description": "Dated public 5-year CDS levels, one value per published report, used only to decide which side of its standard coupon a name trades on when an unsigned DTCC upfront has two feasible readings. DTCC trades still set every level. A mark is used for trades executed on or after its date, for at most max_age_days calendar days, and only while it is the name's latest mark. It decides only if it sits at least decisive_factor times away from the coupon, and only for trades whose two readings are at least min_reading_ratio apart. Otherwise the trade stays ambiguous and prices nothing. Keep exactly one mark per entity and date; cite the report that states the value.",
+  "max_age_days": 21,
+  "decisive_factor": 1.5,
+  "min_reading_ratio": 2.0,
+  "marks": [
+    {"entity": "CRWV", "date": "2025-10-06", "reported_bp": 368.4, "provider": "Bloomberg", "reported_by": "Barron's, 8 Dec 2025", "url": "https://www.itiger.com/news/2590361937"},
+    {"entity": "CRWV", "date": "2025-12-05", "reported_bp": 643.0, "provider": "Bloomberg", "reported_by": "Barron's, 8 Dec 2025", "url": "https://www.itiger.com/news/2590361937"},
+    {"entity": "CRWV", "date": "2026-07-28", "reported_bp": 855.0, "provider": "not stated", "reported_by": "24/7 Wall St, 29 Jul 2026", "url": "https://247wallst.com/investing/2026/07/29/nebius-drops-10-coreweave-sinks-9-as-rising-credit-swap-costs-hit-the-ai-cloud-trade/"},
+    {"entity": "CRWV", "date": "2026-10-15", "reported_bp": 1194.5, "provider": "ICE Data Services", "reported_by": "Benzinga, citing Bloomberg", "url": "https://www.benzinga.com/node/62412918"},
+    {"entity": "CRWV", "date": "2026-10-21", "reported_bp": 1067.0, "provider": "not stated", "reported_by": "CNBC, 21 Oct 2026, as cited by FourWeekMBA", "url": "https://fourweekmba.com/ai-coreweave-debt-yields-15-as-credit-desks-wait-for-midterms/"},
+    {"entity": "CRWV", "date": "2026-10-27", "reported_bp": 1041.4, "provider": "Markit (S&P Global)", "reported_by": "roic.ai", "url": "https://www.roic.ai/news/coreweave-cds-narrows-to-lowest-in-over-a-week-but-credit-stress-persists-10-27-2026"},
+    {"entity": "CRWV", "date": "2026-11-05", "reported_bp": 1289.0, "provider": "Deutsche Bank", "reported_by": "CNBC, 6 Nov 2026", "url": "https://www.cnbc.com/2026/11/06/coreweave-bond-yield-tops-16percent-as-ai-credit-stress-rises.html"},
+    {"entity": "CRWV", "date": "2026-11-06", "reported_bp": 1155.0, "provider": "Deutsche Bank", "reported_by": "CNBC, 6 Nov 2026", "url": "https://www.cnbc.com/2026/11/06/coreweave-bond-yield-tops-16percent-as-ai-credit-stress-rises.html"},
+    {"entity": "CRWV", "date": "2026-11-25", "reported_bp": 1314.0, "provider": "not stated", "reported_by": "Yahoo Finance, citing Reuters, 25 Nov 2026", "url": "https://finance.yahoo.com/markets/stocks/articles/oracle-coreweave-face-stark-warning-162922864.html"}
+  ]
+}

@@ -17,8 +17,9 @@ columns:
   - {name: last_trade, type: datetime}
   - {name: n_capped, type: int, min: 0, description: "Accepted trades whose notional shows the reporting cap (+); payment fractions use the reported notional, so the actual fraction may differ"}
   - {name: n_percent_coupon_normalised, type: int, min: 0, description: "Trades whose coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
-  - {name: n_ambiguous, type: int, min: 0, description: "Excluded unsigned-upfront trades with two distinct feasible nonnegative-hazard roots; quotes and prior levels cannot select a sign"}
+  - {name: n_ambiguous, type: int, min: 0, description: "Excluded unsigned-upfront trades with two distinct feasible nonnegative-hazard roots that no public mark could decide (no mark, a mark over 21 days old or near the coupon, or readings under 2x apart); quotes, prior levels and ratings cannot select a sign"}
   - {name: n_sign_from_reference, type: int, min: 0, max: 0, description: "Compatibility field, always zero: reference-based sign selection is forbidden by this decoder"}
+  - {name: n_sign_attested, type: int, min: 0, description: "Accepted unsigned-upfront trades whose side of the coupon came from the name's latest dated public CDS mark (harness/sign_attestations.json); the DTCC trade still sets the level"}
   - {name: n_basket_legs, type: int, min: 0, description: "Eligible on-the-run standard-coupon CDS rows quarantined as suspected basket legs: matching upfront fraction across names within 120 seconds; heuristic, not proven basket membership"}
   - {name: n_model_domain_errors, type: int, min: 0, description: "Excluded upfront trades with unsupported coupons, invalid model inputs, unbracketed roots or failed residual checks; numerical support limits do not prove a sign impossible"}
   - {name: n_invalid_quotes, type: int, min: 0, description: "Excluded nonzero quote fields: nonfinite, nonpositive or unresolved-unit values, or reported quotes under 10 bp (quote-quality rule; never applied to upfront roots)"}

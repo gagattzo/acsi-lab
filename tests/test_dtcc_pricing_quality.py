@@ -3,12 +3,12 @@ import math
 
 import pytest
 
-from test_dtcc import DAY, row, CRWV, dtcc
+from test_dtcc import DAY, NO_MARKS, row, CRWV, dtcc
 
 
-def classify(rows, previous=None):
+def classify(rows, previous=None, attestations=NO_MARKS):
     quality = {}
-    levels, trades = dtcc.parse_day(rows, DAY, previous or {}, quality=quality)
+    levels, trades = dtcc.parse_day(rows, DAY, previous or {}, quality=quality, attestations=attestations)
     return levels, trades, quality
 
 
@@ -54,7 +54,7 @@ def test_ambiguous_day_has_diagnostics_but_no_price_or_canonical_trade():
     q = quality['CRWV']
     assert q['accepted_trades'] == 0 and q['ambiguous'] == 1
     assert q['candidate_interval_bp']['low'] < 100 < q['candidate_interval_bp']['high']
-    assert q['reasons'] == ['ambiguous_upfront_sign', 'no_accepted_price']
+    assert q['reasons'] == ['ambiguous_upfront_sign', 'no_accepted_price', 'no_public_mark']
 
 
 def test_quote_does_not_resolve_another_trades_upfront_sign():

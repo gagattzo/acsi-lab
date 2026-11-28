@@ -128,3 +128,35 @@ def test_unrelated_orphan_does_not_block_tracked_entities():
     result = build([row(), row('2', 'CORR', 'missing', **{'Underlying Asset Name': 'UNRELATED'})])
     assert ids(result) == ['1']
     assert result.quality['status'] == 'complete'
+
+
+# --- input_impact: which names a quarantined record could still touch (the website's headline gate reads this) ---
+
+def impact(rows):
+    return build(rows).quality['input_impact']
+
+
+def test_a_clean_ledger_reports_no_impact():
+    assert impact([row(), row('2', 'CORR', '1')]) == {}
+
+
+def test_an_orphan_correction_reports_its_name_and_execution_day():
+    out = impact([row('9', 'CORR', 'Z1', **{'Underlying Asset Name': 'COREWEAVE', 'Execution Timestamp': '2026-10-15T15:00:00Z'})])
+    assert out == {'CRWV': {'latest_execution_date': '2026-10-15', 'invalid_execution_dates': 0}}
+
+
+def test_every_version_of_a_conflicting_identifier_counts():
+    rows = [row('5'), row('5', **{'Execution Timestamp': '2026-11-25T15:00:00Z', 'Spread-Leg 1': '0.04'})]
+    assert impact(rows) == {'ORCL': {'latest_execution_date': '2026-11-25', 'invalid_execution_dates': 0}}
+
+
+def test_a_version_naming_no_entity_is_unidentified_and_another_name_is_left_out():
+    rows = [row('7', 'CORR', 'Z2'), row('8', 'CORR', '7', **{'Underlying Asset Name': ''}),
+            row('9', 'CORR', '8', **{'Underlying Asset Name': 'SOME OTHER ISSUER'})]
+    out = impact(rows)
+    assert set(out) == {'ORCL', 'UNIDENTIFIED'} and out['UNIDENTIFIED']['latest_execution_date'] == DAY
+
+
+def test_unreadable_execution_days_and_unknown_actions_fail_closed():
+    out = impact([row('3', 'XXXX', **{'Execution Timestamp': 'later'}), row('4', 'CORR', 'Z3', **{'Execution Timestamp': ''})])
+    assert out == {'ORCL': {'latest_execution_date': None, 'invalid_execution_dates': 2}}

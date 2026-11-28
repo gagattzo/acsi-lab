@@ -1,4 +1,41 @@
 {
+ "attestations": {
+  "decisive_factor": 1.5,
+  "description": "Dated public 5-year CDS levels, one value per published report, used only to decide which side of its standard coupon a name trades on when an unsigned DTCC upfront has two feasible readings. DTCC trades still set every level. A mark is used for trades executed on or after its date, for at most max_age_days calendar days, and only while it is the name's latest mark. It decides only if it sits at least decisive_factor times away from the coupon, and only for trades whose two readings are at least min_reading_ratio apart. Otherwise the trade stays ambiguous and prices nothing. Keep exactly one mark per entity and date; cite the report that states the value.",
+  "marks": [
+   {
+    "date": "2026-11-20",
+    "entity": "CRWV",
+    "reported_bp": 1200.0,
+    "reported_by": "wide: keeps the high reading from 20 Nov",
+    "url": "https://example.org/synthetic"
+   },
+   {
+    "date": "2026-11-26",
+    "entity": "CRWV",
+    "reported_bp": 300.0,
+    "reported_by": "tight: keeps the low reading from 26 Nov, never earlier",
+    "url": "https://example.org/synthetic"
+   },
+   {
+    "date": "2026-10-01",
+    "entity": "ORCL",
+    "reported_bp": 300.0,
+    "reported_by": "decisive but over 21 days old on every corpus day",
+    "url": "https://example.org/synthetic"
+   },
+   {
+    "date": "2026-11-24",
+    "entity": "ORCL",
+    "reported_bp": 120.0,
+    "reported_by": "too near the 1% coupon to decide",
+    "url": "https://example.org/synthetic"
+   }
+  ],
+  "max_age_days": 21,
+  "min_reading_ratio": 2.0,
+  "schema": "acsi-sign-attestations-v1"
+ },
  "columns": [
   "Dissemination Identifier",
   "Original Dissemination Identifier",
@@ -601,6 +638,52 @@
      "UPI Underlier Name": "",
      "Underlier ID-Leg 1": "239FAV",
      "Underlying Asset Name": "COREWEAVE, INC."
+    },
+    {
+     "Action type": "NEWT",
+     "Dissemination Identifier": "A26",
+     "Event timestamp": "2026-11-23T16:40:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-23T16:40:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.05",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "200000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "239FAV",
+     "Underlying Asset Name": "COREWEAVE, INC."
+    },
+    {
+     "Action type": "NEWT",
+     "Dissemination Identifier": "A27",
+     "Event timestamp": "2026-11-23T16:50:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-23T16:50:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.01",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "210000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "6EC42L",
+     "Underlying Asset Name": "ORACLE CORPORATION"
     }
    ]
   },
@@ -744,6 +827,29 @@
      "UPI Underlier Name": "",
      "Underlier ID-Leg 1": "UZEAAG",
      "Underlying Asset Name": "META PLATFORMS, INC."
+    },
+    {
+     "Action type": "NEWT",
+     "Dissemination Identifier": "B07",
+     "Event timestamp": "2026-11-24T16:00:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-24T16:00:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.01",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "220000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "6EC42L",
+     "Underlying Asset Name": "ORACLE CORPORATION"
     }
    ]
   },
@@ -1071,6 +1177,98 @@
      "UPI Underlier Name": "",
      "Underlier ID-Leg 1": "6EC42L",
      "Underlying Asset Name": "ORACLE CORPORATION"
+    },
+    {
+     "Action type": "TERM",
+     "Dissemination Identifier": "C14",
+     "Event timestamp": "2026-11-25T11:00:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-10-15T15:00:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.05",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "Z97",
+     "Other payment amount": "",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "239FAV",
+     "Underlying Asset Name": "COREWEAVE, INC."
+    },
+    {
+     "Action type": "CORR",
+     "Dissemination Identifier": "C15",
+     "Event timestamp": "2026-11-25T16:10:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-25T16:10:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.01",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "Z96",
+     "Other payment amount": "",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "0.0125",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "UZEAAG",
+     "Underlying Asset Name": "META PLATFORMS, INC."
+    },
+    {
+     "Action type": "CORR",
+     "Dissemination Identifier": "C16",
+     "Event timestamp": "2026-11-25T16:10:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-25T16:10:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.01",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "C15",
+     "Other payment amount": "",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "0.0126",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "",
+     "Underlying Asset Name": ""
+    },
+    {
+     "Action type": "XXXX",
+     "Dissemination Identifier": "C17",
+     "Event timestamp": "2026-11-25T16:20:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "not-a-date",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.05",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "2300000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "239FAV",
+     "Underlying Asset Name": "COREWEAVE, INC."
     }
    ]
   },
@@ -1099,6 +1297,29 @@
      "UPI Underlier Name": "",
      "Underlier ID-Leg 1": "6EC42L",
      "Underlying Asset Name": "ORACLE CORPORATION"
+    },
+    {
+     "Action type": "NEWT",
+     "Dissemination Identifier": "D02",
+     "Event timestamp": "2026-11-26T15:00:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-26T15:00:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.05",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "2300000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "239FAV",
+     "Underlying Asset Name": "COREWEAVE, INC."
     }
    ]
   },
@@ -1150,11 +1371,47 @@
      "UPI Underlier Name": "",
      "Underlier ID-Leg 1": "6EC42L",
      "Underlying Asset Name": "ORACLE CORPORATION"
+    },
+    {
+     "Action type": "NEWT",
+     "Dissemination Identifier": "E03",
+     "Event timestamp": "2026-11-30T15:00:00Z",
+     "Event type": "TRAD",
+     "Execution Timestamp": "2026-11-30T15:00:00Z",
+     "Expiration Date": "2031-12-20",
+     "Fixed rate-Leg 1": "0.05",
+     "Non-standardized term indicator": "FALSE",
+     "Notional amount-Leg 1": "10000000",
+     "Notional currency-Leg 1": "USD",
+     "Original Dissemination Identifier": "",
+     "Other payment amount": "2300000",
+     "Other payment currency": "USD",
+     "Other payment type": "UFRO",
+     "Package indicator": "FALSE",
+     "Post-priced swap indicator": "FALSE",
+     "Spread-Leg 1": "",
+     "UPI FISN": "NA/CDS Corp SN Sr",
+     "UPI Underlier Name": "",
+     "Underlier ID-Leg 1": "239FAV",
+     "Underlying Asset Name": "COREWEAVE, INC."
     }
    ]
   }
  ],
  "scenarios": {
+  "a later mark never decides an earlier trade": [
+   "C12"
+  ],
+  "a mark near the coupon decides nothing": [
+   "B07"
+  ],
+  "a mark over 21 days old decides nothing": [
+   "A27"
+  ],
+  "a tight mark keeps the low reading from its own date": [
+   "D02",
+   "E03"
+  ],
   "ambiguous correction order": [
    "B04",
    "C04",
@@ -1212,8 +1469,21 @@
   "late report priced on its execution day": [
    "C03"
   ],
+  "low root under 10 bp: a recent wide mark keeps the high reading": [
+   "B03"
+  ],
   "off-the-run maturity": [
    "A22"
+  ],
+  "quarantine executed before the input window": [
+   "C14"
+  ],
+  "quarantined lineage with an unidentified version": [
+   "C15",
+   "C16"
+  ],
+  "quarantined record with an unreadable execution date": [
+   "C17"
   ],
   "quote under 10 bp": [
    "A10",
@@ -1237,22 +1507,23 @@
    "A02",
    "E02"
   ],
+  "readings under 2x apart stay ambiguous despite a wide mark": [
+   "A26"
+  ],
   "termination of a trade outside the window": [
    "C07"
   ],
-  "two feasible upfront roots": [
-   "A11",
-   "A15",
-   "C12"
+  "two feasible roots and no mark stay ambiguous": [
+   "A15"
+  ],
+  "two feasible roots: a recent wide mark keeps the high reading": [
+   "A11"
   ],
   "unknown action": [
    "C10"
   ],
   "unwind payment is not an upfront": [
    "A06"
-  ],
-  "upfront low root under 10 bp stays ambiguous": [
-   "B03"
   ],
   "upfront outside the model domain": [
    "A12"

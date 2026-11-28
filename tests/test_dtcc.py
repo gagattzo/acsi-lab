@@ -147,10 +147,13 @@ def test_neither_spread_nor_upfront_prices_nothing():
 # --- which trades may price a level (aistress.si/api/cds applies the same rules; parity in tests/test_site_parity.py) --
 
 CRWV = {'Underlying Asset Name': 'COREWEAVE, INC.', 'Underlier ID-Leg 1': '239FAV', 'Fixed rate-Leg 1': '0.05'}
+# The strict-resolver tests below run without public marks: they show that quotes and previous levels cannot decide a
+# sign. tests/test_dtcc_attested_side.py covers the marks.
+NO_MARKS = dict(dtcc.SIGN_ATTESTATIONS, marks=[])
 
 
 def crwv_level(rows, prev=None):
-    lv, _ = dtcc.parse_day(rows, DAY, prev or {})
+    lv, _ = dtcc.parse_day(rows, DAY, prev or {}, attestations=NO_MARKS)
     return lv.get('CRWV')
 
 

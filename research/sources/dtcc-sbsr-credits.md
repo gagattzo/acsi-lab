@@ -32,7 +32,7 @@ Counts are from the 24 Nov 2026 end-of-day file: 1,225 records, 110 columns.
 | Notional amount-Leg 1 | Size | currency units | capped sizes end in `+` | yes: under $1M prices nothing; also the base of the upfront percentage |
 | Notional currency-Leg 1, Other payment currency | Currencies | ISO code | a few CHF and EUR; `USD;USD` on rows with two payments | yes: notional currency must be USD; other-payment currency must be blank or USD (a composite `USD;USD` is not accepted) |
 | Package indicator, Non-standardized term indicator, Post-priced swap indicator | Flags | TRUE / FALSE, any case; blank on older files | 274 packages, 54 post-priced in a year (our names) | yes: any TRUE prices nothing; unsupported indicator values fail source validation |
-| Other payment amount | Upfront paid at the trade | currency units, **unsigned** | blank when there is no upfront | yes |
+| Other payment amount | Upfront paid at the trade | currency units, **unsigned** | blank when there is no upfront | yes: both signs are solved; when both are feasible, the side of the coupon comes from the name's latest dated public CDS mark (`harness/sign_attestations.json`, `dtcc-attested-v3`) or the trade is excluded |
 | Other payment type | UFRO upfront, UWIN unwind | code | blank on 414 | yes: only UFRO amounts are read as upfronts |
 | Platform identifier | Venue code | e.g. BILT, TWSF, XXXX | | no |
 | Cleared | Clearing flag | N, I | to decode | no |

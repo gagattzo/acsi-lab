@@ -47,7 +47,18 @@ def _stamp(value):
         return None
 
 
-def resolve_lifecycle(rows, entity_of):
+IDENTITY_FIELDS = ('Underlying Asset Name', 'UPI Underlier Name', 'Underlier ID-Leg 1')
+
+
+def _execution_day(row):
+    d = str(row.get('Execution Timestamp') or '')[:10]
+    try:
+        return d if dt.date.fromisoformat(d).isoformat() == d else None
+    except ValueError:
+        return None
+
+
+def resolve_lifecycle(rows, entity_of, impact_entity=None):
     """Return effective tracked rows and aggregate diagnostics (no raw records).
 
     A cancellation anywhere in a lineage withholds the whole lineage, rather
@@ -55,18 +66,41 @@ def resolve_lifecycle(rows, entity_of):
     create a new historical transaction price. Parallel corrections of the
     initial id require distinct valid event timestamps; file/row order and id
     magnitude never decide price.
+
+    input_impact says which names a quarantined record could still touch: for every version of every record in a
+    quarantined lineage, and every counted row with an unknown action or no identifier, the latest execution day and
+    the number of unreadable execution days, keyed by impact_entity (default entity_of). A record that names no
+    reference entity at all is UNIDENTIFIED; one that names another entity is left out.
     """
+    impact_entity = impact_entity or entity_of
+    impact = {}
+
+    def touch(row):
+        e = impact_entity(row)
+        key = e if isinstance(e, str) and e else (None if any(str(row.get(k) or '').strip() for k in IDENTITY_FIELDS)
+                                                  else 'UNIDENTIFIED')
+        if key is None:
+            return
+        x = impact.setdefault(key, {'latest_execution_date': None, 'invalid_execution_dates': 0})
+        d = _execution_day(row)
+        if d is None:
+            x['invalid_execution_dates'] += 1
+        elif x['latest_execution_date'] is None or d > x['latest_execution_date']:
+            x['latest_execution_date'] = d
+
     variants, edges, missing_ids = defaultdict(list), defaultdict(set), []
     for row in rows:
         action = str(row.get('Action type', '')).strip().upper()
         if action not in ACTIONS:
             if entity_of(row):
                 missing_ids.append('unknown_action')
+                touch(row)
             continue
         identifier = str(row.get('Dissemination Identifier') or '').strip()
         if not identifier:
             if entity_of(row):
                 missing_ids.append('missing_identifier')
+                touch(row)
             continue
         variants[identifier].append(row)
         parent = str(row.get('Original Dissemination Identifier') or '').strip()
@@ -141,6 +175,8 @@ def resolve_lifecycle(rows, entity_of):
             issues.update(reasons)
             quarantined += 1
             orphans += int('orphan_lineage' in reasons)
+            for r in records:
+                touch(r)
             continue
         if leaves and entity_of(prices[leaves[0]]):
             out.append(prices[leaves[0]])
@@ -148,4 +184,5 @@ def resolve_lifecycle(rows, entity_of):
     return out, {'status': 'partial' if issues else 'complete', 'issue_counts': dict(sorted(issues.items())),
                  'quarantined_lineages': quarantined, 'orphan_lineages': orphans,
                  'cancelled_lineages': cancelled, 'effective_trades': len(out),
+                 'input_impact': dict(sorted(impact.items())),
                  'bounded_history': True, 'point_in_time_verified': False}
