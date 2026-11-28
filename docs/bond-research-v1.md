@@ -2,7 +2,7 @@
 
 For the consolidated, code-checked reference, read the [current index manual](current-index-manual.md). This document provides the component-specific detail.
 
-This version replaces the mixed-population, volume-weighted bond experiment. It is a **research observation**, not a settlement oracle, credit rating, default insurance price or a substitute for the versioned headline CDS methodology. The old level series is retained in hashed revision files and must not be spliced into this method.
+This version replaces the mixed-population, volume-weighted bond experiment. It is a **research observation**, not a settlement oracle, credit rating, default insurance price or a substitute for the versioned headline CDS methodology. Original old level series are retained privately in hashed revision files and must not be spliced into this method. Public historical revision metadata has its market values withheld.
 
 ## Fixed universe and aggregation
 
@@ -24,7 +24,7 @@ The calendar uses explicitly dated SIFMA US bond-market recommendations in `conf
 
 Carry an eligible spread for at most five sessions, with the original source date and a carried flag. Carrying keeps the prior spread, including its prior Treasury comparison; it is not repriced against the current curve and does not imply a new trade. The basket date nevertheless requires a same-date Treasury row. Beyond that age, publish a gap. Freeze basket calculation for any missing same-date Treasury curve. Newly downloaded Treasury years are refreshed on every run, requested dynamically across the observation range, retried once, and archived by content hash; old inputs remain available independently if a source fails. Actual source date, expected session, generation timestamp, coverage, carried count, and quality are distinct manifest fields. API request time must never impersonate market observation time.
 
-Prior same-method published dates earlier than the current bounded source window are retained. Dates within the observed window are recomputed; prior public JSON versions are archived by hash. This preserves research history while explicitly avoiding a claim to an indefinitely complete transaction tape.
+Prior same-method published dates earlier than the current bounded source window are retained. Dates within the observed window are recomputed; prior JSON versions are archived by hash under ignored `private_data/bond_revisions/`. Public export is separately gated for both observation and original source dates, so retention cannot bypass rights authorization. This preserves research history while explicitly avoiding a claim to an indefinitely complete transaction tape.
 
 ## Default policy and release gate
 

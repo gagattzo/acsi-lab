@@ -19,8 +19,10 @@ import numpy as np
 import pandas as pd
 try:
     from .bond_provenance import prepare_private_snapshot, verify_collection, publication_authorization
+    from .bond_publication import public_market_data_authorized, withhold_market_values
 except ImportError:
     from bond_provenance import prepare_private_snapshot, verify_collection, publication_authorization
+    from bond_publication import public_market_data_authorized, withhold_market_values
 
 ROOT = Path(__file__).resolve().parent.parent
 METHOD = 'bond-research-v1'
@@ -208,8 +210,28 @@ def process_daily_bond_spreads(df_trades, universe, treasury_curve, max_carry_da
     return series, states, info
 
 
-def export_public_safe_datasets(series, states, info, universe, output_dir, anchor_date, manifest=None):
+def export_public_safe_datasets(series, states, info, universe, output_dir, anchor_date,
+                                manifest=None, authorization_record=None):
     output_dir = Path(output_dir)
+    manifest = dict(manifest or {})
+    private = manifest.get('private_candidate') is True
+    if private:
+        private_output_path(output_dir)
+    authorization = publication_authorization(authorization_record, anchor_date)
+    if not private:
+        manifest.update(publication_authorization_status=authorization['status'],
+                        publication_authorization_sha256=authorization.get('record_sha256'),
+                        publication_authorization_valid_from=(authorization_record or {}).get('valid_from') if authorization['status']=='recorded_authorization' else None,
+                        publication_authorization_valid_through=(authorization_record or {}).get('valid_through') if authorization['status']=='recorded_authorization' else None)
+        manifest['public_market_data_authorized'] = (
+            authorization['status']=='recorded_authorization'
+            and manifest.get('collection_verification_status')=='verified_snapshot'
+            and not manifest.get('publication_blockers'))
+        if not manifest['public_market_data_authorized']:
+            manifest['publication_eligible'] = False
+        series = [dict(r) if r.get('publication_eligible') is True and public_market_data_authorized(manifest, r['date'])
+                  else withhold_market_values(r) for r in series]
+        manifest['latest_complete_date'] = max((r['date'] for r in series if r.get('publication_eligible')), default=None)
     public = []
     for n,b in enumerate(universe,1):
         c=b['cusip']; st=states.get(c,{}); last=st.get('last_date')
@@ -224,15 +246,22 @@ def export_public_safe_datasets(series, states, info, universe, output_dir, anch
           'latest_median_yield':round(st['median_yield'],6) if st else None,
           'latest_g_spread_bp':round(st['g_spread_bp'],1) if st else None,
           'eligible_prints':st.get('eligible_prints',0),'settlement_eligible':False})
-    atomic_json(output_dir/'acsi_bond_spreads_daily.json',series)
     input_path=output_dir/'acsi_bond_inputs_daily.json'
     inputs=[r for x in info.values() for r in x.get('daily_inputs',[])]
     if input_path.exists() and inputs:
         old_inputs=json.loads(input_path.read_text()); retained={r['date'] for r in series if r.get('historical_input_retained') or r.get('retained_after_source_failure')}
         inputs=[r for r in old_inputs if r.get('method_version')==METHOD and r['date'] in retained]+[r for r in inputs if r['date'] not in retained]
+    if not private:
+        inputs = [{**r, 'publication_eligible':True, 'market_data_withheld':False}
+                  if public_market_data_authorized(manifest, r.get('date'), r.get('source_date'))
+                  else withhold_market_values(r) for r in inputs]
+        public = [{**r, 'publication_eligible':True, 'market_data_withheld':False}
+                  if public_market_data_authorized(manifest, anchor_date, r.get('last_trade_date'))
+                  else withhold_market_values(r) for r in public]
+    atomic_json(output_dir/'acsi_bond_spreads_daily.json',series)
     atomic_json(input_path,inputs)
     atomic_json(output_dir/'acsi_bond_universe_latest.json',public)
-    if manifest is not None: atomic_json(output_dir/'acsi_bond_manifest.json',manifest)
+    atomic_json(output_dir/'acsi_bond_manifest.json',manifest)
 
 
 def preserve_prior_history(series, path, df):
@@ -245,7 +274,7 @@ def preserve_prior_history(series, path, df):
     raw = path.read_bytes()
     prior = json.loads(raw)
     digest = hashlib.sha256(raw).hexdigest()[:16]
-    archive = path.parent / 'bond_revisions' / f'{path.stem}_{digest}.json'
+    archive = ROOT / 'private_data' / 'bond_revisions' / f'{path.stem}_{digest}.json'
     archive.parent.mkdir(parents=True,exist_ok=True)
     if not archive.exists(): archive.write_bytes(raw)
     window_start = max(df.groupby('cusip').tradeExecutionDate.min())
@@ -385,7 +414,7 @@ def main():
                       'snapshot_adapter':Path(__file__).with_name('bond_provenance.py'),
                       'snapshot_cleaner':Path(__file__).with_name('finra_trace.py')}
         manifest['replay_input_hashes']={name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in replay_paths.items()}
-    export_public_safe_datasets(series,states,info,universe,out,anchor,manifest)
+    export_public_safe_datasets(series,states,info,universe,out,anchor,manifest,rights_record)
     print(json.dumps({'as_of':source_date,'expected_session':anchor,'status':manifest['status'],
                       'calculation_status':manifest['calculation_status'],
                       'publication_eligible':manifest['publication_eligible'],'latest':series[-1]}))
