@@ -1,6 +1,6 @@
 # DTCC public swap data: SEC credit file
 
-**Id in sources.yaml:** `dtcc` · **Status:** loader in harness (`harness/dtcc.py`) · **Last checked:** 2026-11-26 by Claude (Opus 5.5), run by @gagattzo
+**Id in sources.yaml:** `dtcc` · **Status:** strict research loader in harness (`harness/dtcc.py`) · **Decoder correction:** 2026-11-28 (`dtcc-strict-v1`). The sample counts below are historical profiling results, not a fresh audit of the full tape.
 
 ## What it is
 DTCC is a security-based swap data repository. Under the SEC's Regulation SBSR, dealers report every single-name CDS trade, and the repository must publish it free of charge. This is the only free, transaction-level source of CDS prices, and it feeds F2 (Oracle 5Y CDS) and the live F1 proxy (CoreWeave 5Y CDS).
@@ -38,7 +38,7 @@ Counts are from the 24 Nov 2026 end-of-day file: 1,225 records, 110 columns.
 ## Quirks
 1. **A blank upfront is not zero.** In JavaScript `Number('')` is 0, so a trade with neither a quoted spread nor an upfront priced at its coupon. See `findings/2026-11-26-blank-upfronts.md`. Fixed on aistress.si on 26 Nov 2026.
 2. **Some coupons are in percent.** Oracle records carry `Fixed rate-Leg 1 = 1` instead of `0.01` (95 in the last year). Until 26 Nov 2026 the harness read them as a 100% coupon and dropped the trade; now 0.5 or more is divided by 100. 48 Oracle and 9 Meta priced trades recovered (issue #7).
-3. **Upfronts carry no sign.** Both readings are computed. A reading under 10 bp on a 1% coupon or 100 bp on a 5% coupon is impossible, so the trade decides alone; otherwise the reading closer to the day's eligible quoted median (else the previous level) wins, and `n_sign_from_reference` counts it. `Price` is blank for our names, so no field carries the sign. See `findings/2026-11-28-cds-contract-checks.md`.
+3. **Upfronts carry no sign.** Both readings are computed. The previous 10/100 bp coupon-dependent floors were assumptions, not mathematical feasibility bounds, and have been removed. Two admissible roots mean an ambiguous row, which is excluded. Neither a nearby quote nor a previous level chooses the sign. Numerical-domain failures also exclude the row; a numerical upper bound is not proof that the opposite sign is economically impossible. Accepted inversion remains conditional on the simplified flat-hazard, fixed-recovery model. See `docs/reliability-release-2026-11-28.md` at repository root.
 4. **Capped notionals.** Large trades show the cap with a `+`; the true size is larger. The upfront amount appears to be reported on the capped size too: on days with both, capped and uncapped implied spreads differ by a median 0.5 bp (Oracle, 165 days). Counted per day as `n_capped`.
 5. **Not every record is a price.** Of 3,374 on-the-run 5-year records for our three names in a year, 346 are packages, odd lots, novations, non-standard or post-priced trades, non-USD or not senior CDS. A cancellation (EROR) can arrive days later in another file: 99 trades behind past levels were cancelled that way. See `findings/2026-11-28-cds-contract-checks.md`.
 6. **Unwinds are not upfronts.** `Other payment type = UWIN` is the payment to close a trade. 26 on-the-run Oracle records in the year; no longer read as prices.
