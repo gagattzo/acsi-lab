@@ -22,6 +22,8 @@ Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.
     DTCC upfronts are unsigned, so each has two readings. A reading under the floor for its coupon (10 bp on 1%, 100 bp
     on 5%) is impossible and the trade decides alone; otherwise the reading nearer the day's eligible quoted median
     (or the previous level) wins, and n_sign_from_reference counts those trades
+  - basket legs out: an upfront that matches, to a millionth of notional, a trade on another of our names executed
+    within 120 seconds is one basket reported name by name, not a price (n_basket_legs)
   - quoted and upfront-implied spreads are kept in separate columns. Official level: the median of all the day's priced
     trades; official_kind says what it rests on (quoted, upfront_implied or mixed). Quoted-only was tested and rejected:
     on Oracle the two differ by a median 1.3 bp, and dropping implied prints more than doubles the days resting on
@@ -45,7 +47,7 @@ TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread
                 'upfront_pct', 'notional_capped', 'sign_by']
 DAILY_FIELDS = ['date', 'entity', 'official_bp', 'official_kind', 'official_trades', 'quoted_median_bp', 'quoted_trades',
                 'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised',
-                'n_ambiguous', 'n_sign_from_reference']
+                'n_ambiguous', 'n_sign_from_reference', 'n_basket_legs']
 MAN_FIELDS = ['date', 'url', 'bytes', 'sha256', 'fetched_at']
 CONFLICT_FIELDS = ['date', 'manifest_sha256', 'new_sha256', 'new_bytes', 'path', 'fetched_at']
 
@@ -210,6 +212,29 @@ def resolve_upfront(hi, lo, c, ref, pct):
     return (hi, 'large_upfront') if pct >= 0.02 else (None, 'ambiguous')
 
 
+BASKET_SECONDS = 120
+
+
+def basket_legs(rows):
+    """Dissemination ids of upfront trades that share their upfront (to a millionth of notional) with a trade on another of
+    our names executed within BASKET_SECONDS: legs of one basket reported name by name, not single-name prices. On
+    21 Sep 2026 six such legs priced Oracle at 145 bp; its other trades said 205-208 and the next day's quotes 212-215."""
+    ups = []
+    for r in rows:
+        e = entity_of(r)
+        if not e or not eligible(r) or str(r.get('Other payment type', '')).strip().upper() != 'UFRO':
+            continue
+        n, amt, ex = fnum(r.get('Notional amount-Leg 1')), fnum(r.get('Other payment amount')), ts(r.get('Execution Timestamp'))
+        if n and n > 0 and amt and ex is not None:
+            ups.append((abs(amt / n), ex, e, r.get('Dissemination Identifier')))
+    out = set()
+    for i, a in enumerate(ups):
+        for b in ups[i + 1:]:
+            if a[2] != b[2] and abs(a[0] - b[0]) <= 1e-6 and abs(a[1] - b[1]) <= BASKET_SECONDS:
+                out.update((a[3], b[3]))
+    return out
+
+
 def entity_of(r):
     text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' +
             str(r.get('Underlier ID-Leg 1', ''))).upper()
@@ -269,15 +294,19 @@ def parse_day(rows, day, prev, cleaned=False):
     rows are one file's rows (cleaned here, same-day executions only) or, with cleaned=True, a ledger day."""
     if not cleaned:
         rows = clean(rows, day)
+    baskets = basket_legs(rows)
     levels, trades = {}, []
     for eid, (match, red) in ENTITIES.items():
-        quoted, ups = [], []
+        quoted, ups, n_basket = [], [], 0
         for r in rows:
             text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' + str(r.get('Underlier ID-Leg 1', ''))).upper()
             if not ((match in text or red in text) and is_cds(r) and eligible(r)):
                 continue
             ex, exp = ts(r.get('Execution Timestamp')), ts(str(r.get('Expiration Date', '')) + 'T00:00:00Z')
             if ex is None or exp is None or exp != on_the_run_5y(ex):
+                continue
+            if r.get('Dissemination Identifier') in baskets:
+                n_basket += 1
                 continue
             C, norm = coupon(r.get('Fixed rate-Leg 1'))
             step = ex + DAY
@@ -324,7 +353,7 @@ def parse_day(rows, day, prev, cleaned=False):
                        'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat(),
                        'n_capped': sum(1 for x in official if x[2]['notional_capped']),
                        'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised']),
-                       'n_ambiguous': n_amb, 'n_sign_from_reference': n_ref}
+                       'n_ambiguous': n_amb, 'n_sign_from_reference': n_ref, 'n_basket_legs': n_basket}
         for s, ex, meta in official:
             trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
     return levels, trades

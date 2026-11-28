@@ -27,17 +27,18 @@ on 28 Nov 2026 (`research/findings/2026-11-28-cds-contract-checks.md`):
 
 | Test | Baseline | Read |
 | --- | --- | --- |
-| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.032 / 0.041 / 0.018 / 0.046 (0.090 / 0.085 / 0.064 / 0.105) | Broad markets explain about 5% (v0.2: 11%) of daily moves, more in the second half (v0.2: 18%). Weekly R² on the Nasdaq runs 4% to 17% (v0.2: 8% to 24%) depending on the start day; short spells of co-movement beat chance; no lock-in on selloff days. See `research/findings/2026-11-28-nasdaq-regimes.md` |
+| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.033 / 0.041 / 0.020 / 0.045 (0.090 / 0.085 / 0.067 / 0.105) | Broad markets explain about 5% (v0.2: 11%) of daily moves, more in the second half (v0.2: 17%). Weekly R² on the Nasdaq runs 3% to 18% (v0.2: 7% to 24%) depending on the start day; short spells of co-movement beat chance; no lock-in on selloff days. See `research/findings/2026-11-28-nasdaq-regimes.md` |
 | Most a single trade moved it | 18.5 points, p95 6.6 (18.5, p95 7.0) | Far too much: on a quiet day one CoreWeave print sets the level alone |
 | Days resting on an input with fewer than 3 trades | 82% | The main weakness |
-| Days a level is set by a single trade | 37% | |
+| Days a level is set by a single trade | 38% | |
 | Weekdays with a same-day CoreWeave CDS trade | 61% | Oracle: 97% |
 | Inputs from sources we may not redistribute | 3 of 5 | Loans (press), H100 and Blackwell rents (Silicon Data) |
 
 On 28 Nov 2026 the tape got contract checks (`research/findings/2026-11-28-cds-contract-checks.md`): only USD, senior,
-$1M-plus trades price, never novations, packages or post-priced trades; cancellations and corrections apply across
-files; an upfront's sign is read from the trade alone whenever the other reading is impossible for its coupon. 10% of
-records turned out not to be prices, and 99 trades behind past levels had been cancelled. The tape got thinner and the
+$1M-plus trades price, never novations, packages, basket legs or post-priced trades; cancellations and corrections
+apply across files; an upfront's sign is read from the trade alone whenever the other reading is impossible for its
+coupon. 10% of records turned out not to be prices, 66 were basket legs, and 99 trades behind past levels had been
+cancelled. The tape got thinner and the
 scorecard above moved with it; the levels behind the live headline did not change. The site runs the same rules,
 checked level for level against this harness.
 

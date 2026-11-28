@@ -210,6 +210,30 @@ def test_non_standard_coupon_upfront_is_not_converted():
     assert level([row(**{'Dissemination Identifier': '2', 'Fixed rate-Leg 1': '0.03', 'Other payment amount': '1030000'})], prev={'ORCL': 365.0}) is None
 
 
+META = {'Underlying Asset Name': 'META PLATFORMS, INC.', 'Underlier ID-Leg 1': 'UZEAAG'}
+
+
+def test_basket_legs_sharing_one_upfront_across_names_do_not_price():
+    # 21 Sep 2026: Oracle and Meta legs with the same 1.9746% upfront, seconds apart, priced Oracle at 145 bp while its
+    # own trades said 205-208.
+    o = row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:00Z'})
+    m = row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:01:00Z'}))
+    real = row(**{'Dissemination Identifier': '4', 'Other payment amount': '465890'})
+    lv, _ = dtcc.parse_day([o, m, real], DAY, {'ORCL': 208.0, 'META': 90.0})
+    assert lv['ORCL']['official_trades'] == 1 and lv['ORCL']['n_basket_legs'] == 1 and 'META' not in lv
+
+
+def test_same_upfront_minutes_apart_or_on_one_name_is_not_a_basket():
+    apart = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460'}),
+             row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:10:00Z'}))]
+    same = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460'}),
+            row(**{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:30Z'})]
+    lv, _ = dtcc.parse_day(apart, DAY, {'ORCL': 150.0, 'META': 150.0})
+    assert lv['ORCL']['n_basket_legs'] == 0 and 'META' in lv
+    lv, _ = dtcc.parse_day(same, DAY, {'ORCL': 150.0})
+    assert lv['ORCL']['official_trades'] == 2
+
+
 def _file(day, rows):
     return (day, dtcc.slim(rows))
 
