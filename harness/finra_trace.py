@@ -296,7 +296,10 @@ async def run_pipeline(universe_path, test_mode=False, output_dir=PRIVATE_DATA, 
     resolved_prior = json.loads(old_universe_path.read_text()) if old_universe_path.exists() else []
     resolved = {r.get("id") or r.get("trace_symbol") or r.get("cusip"): r for r in resolved_prior}
     fetched_at = datetime.now(timezone.utc).isoformat()
-    report = {"schema_version": 2, "fetched_at": fetched_at, "status": "collecting",
+    manifest_path = out_dir / "trace_collection_manifest.json"
+    previous_report = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    report = {"schema_version": 3, "attempted_at": fetched_at, "fetched_at": None, "status": "collecting",
+              "last_successful_collection_at": previous_report.get("last_successful_collection_at"),
               "correction_status": "unverified_portal_snapshot", "settlement_eligible": False,
               "expected_bonds": len(universe), "bonds": []}
     client = client or FinraTraceClient()
@@ -364,6 +367,9 @@ async def run_pipeline(universe_path, test_mode=False, output_dir=PRIVATE_DATA, 
         report["status"] = "incomplete" if errors else "research_snapshot"
         report["failed_bonds"] = errors
         report["completed_at"] = datetime.now(timezone.utc).isoformat()
+        if not errors:
+            report["fetched_at"] = fetched_at
+            report["last_successful_collection_at"] = report["completed_at"]
         write_json(out_dir / "trace_collection_manifest.json", report)
         # Immutable run diagnostics, even for failures; no private identifiers in logs.
         run_id = report["completed_at"].replace(":", "").replace("+", "_")
