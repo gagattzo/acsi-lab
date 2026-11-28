@@ -7,6 +7,7 @@ on:
     - cron: '0 7 * * 2-6'
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/daily-trace-update.yml'
 concurrency:
@@ -16,7 +17,7 @@ permissions:
   contents: write
 jobs:
   update-trace:
-    if: github.repository == 'gagattzo/Ai-credit-stress-index-'
+    if: github.repository == 'gagattzo/Ai-credit-stress-index-' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -44,7 +45,7 @@ jobs:
         continue-on-error: true
         run: python harness/daily_trace_update.py
       - name: Commit approved derived research outputs
-        if: always() && steps.collect.outcome != 'skipped'
+        if: always() && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure')
         run: |
           python harness/validate_bond_publication.py
           git config user.name 'github-actions[bot]'
