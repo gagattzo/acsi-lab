@@ -1,5 +1,7 @@
 # Research reliability release — 28 November 2026
 
+For the consolidated, code-checked reference, read the [current index manual](current-index-manual.md). This document provides the component-specific detail.
+
 This release repairs data interpretation and publication controls. It does not adopt a new economic index method,
 certify a benchmark, or authorize a perpetual contract. The v0.2 anchors and scoring weights remain unchanged;
 historical weekly editions remain dated publications. The cash-bond candidate stays separate from the CDS headline.

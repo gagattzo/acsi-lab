@@ -1,4 +1,6 @@
-# ACSI method v0.1
+# ACSI method v0.1 — historical edition
+
+> **Historical scope:** this document describes the 24 November 2026 v0.1 edition and the earlier v0.1-live rules. It is retained for reproducibility. Read the [current index manual](docs/current-index-manual.md) for deployed v0.2, strict CDS decoding, current publication gates and separate bond research. In particular, the historical dropping/re-averaging rule below is not the current headline availability rule.
 
 **Question:** is the stress in AI infrastructure in the debt that financed the build-out, or in what the GPUs earn?
 
@@ -23,13 +25,13 @@ Each input is scored against two anchors fixed in advance, a calm level and a di
 | A1 | H100 rental index (Silicon Data SDH100RT) | $3.56 → $2.06 | $3.10 | held |
 | A2 | Blackwell B200 rent, change over about half a year | −8% → −40% | +29.5% | held |
 
-Reading on 24 Nov 2026: debt 58.0, GPU 15.3, gap +42.6. ACSI Live on 25 Nov: +42.9.
+Frozen reading on 24 Nov 2026: debt 58.0, GPU 15.3, gap +42.6. The former decoder reported v0.1-live +42.9 on 25 Nov; that pre-strict result is historical evidence, not a validated current reading.
 
 ## Rules
 
 - An input past its window is dropped and the others re-averaged; nothing is filled in.
 - F3 is the median of loan prints within 56 days; press wording is taken at its bound ("below the mid-80s" = 85).
-- DTCC cleaning: see `harness/dtcc.py`. Same code as the live site.
+- The current DTCC cleaning implementation is `harness/dtcc.py`, with a separately implemented JavaScript equivalent on the site. It has changed since this edition; see the [current manual](docs/current-index-manual.md) for the strict decoder rather than using this historical document as a source contract.
 - Anchors are frozen for method v0.1. Any change is a new method version, published side by side with the old one.
 
-Full method document: [aistress.si/methodology-v0.1.pdf](https://aistress.si/methodology-v0.1.pdf).
+Archived v0.1 method document (not the current operating manual): [aistress.si/methodology-v0.1.pdf](https://aistress.si/methodology-v0.1.pdf).
