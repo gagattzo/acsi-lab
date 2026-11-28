@@ -9,7 +9,7 @@ columns:
   - {name: official_bp, type: float, finite: true, min: 0, unit: bp, description: "Research daily level: median nonnegative finite par spread of accepted trades; no empirical spread floor or ceiling"}
   - {name: official_kind, type: enum, values: [quoted, upfront_implied, mixed], description: "What the official level rests on: quoted spreads only, spreads implied from upfronts only (a model: flat hazard, 40% recovery, 4.5% rate), or both"}
   - {name: official_trades, type: int, min: 1, description: Trades in the official median}
-  - {name: quoted_median_bp, type: float, finite: true, nullable: true, min: 0, unit: bp, description: Median of accepted quoted spreads only (blank when none were quoted)}
+  - {name: quoted_median_bp, type: float, finite: true, nullable: true, min: 10, unit: bp, description: "Median of accepted reported quotes only (blank when none were quoted); a reported quote under 10 bp is a reporting error"}
   - {name: quoted_trades, type: int, min: 0}
   - {name: upfront_implied_bp, type: float, finite: true, nullable: true, min: 0, unit: bp, description: Median of accepted upfront-implied spreads only (blank when none)}
   - {name: upfront_trades, type: int, min: 0}
@@ -21,4 +21,4 @@ columns:
   - {name: n_sign_from_reference, type: int, min: 0, max: 0, description: "Compatibility field, always zero: reference-based sign selection is forbidden by this decoder"}
   - {name: n_basket_legs, type: int, min: 0, description: "Eligible on-the-run standard-coupon CDS rows quarantined as suspected basket legs: matching upfront fraction across names within 120 seconds; heuristic, not proven basket membership"}
   - {name: n_model_domain_errors, type: int, min: 0, description: "Excluded upfront trades with unsupported coupons, invalid model inputs, unbracketed roots or failed residual checks; numerical support limits do not prove a sign impossible"}
-  - {name: n_invalid_quotes, type: int, min: 0, description: "Excluded nonzero quote fields with nonfinite, nonpositive or unresolved-unit values"}
+  - {name: n_invalid_quotes, type: int, min: 0, description: "Excluded nonzero quote fields: nonfinite, nonpositive or unresolved-unit values, or reported quotes under 10 bp (quote-quality rule; never applied to upfront roots)"}

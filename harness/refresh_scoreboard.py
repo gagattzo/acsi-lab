@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-DECODER = 'dtcc-strict-v1'
+DECODER = 'dtcc-strict-v2'
 
 
 def sha256(path):
