@@ -1,0 +1,297 @@
+{
+ "days": {
+  "2026-11-23": {
+   "CRWV": {
+    "level": {
+     "official_bp": 4500.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 1,
+     "basket_legs": 0,
+     "candidate_interval_bp": {
+      "high": 1371.6,
+      "low": 12.0
+     },
+     "invalid_quotes": 1,
+     "model_domain_errors": 1,
+     "reasons": [
+      "ambiguous_upfront_sign",
+      "model_domain_error",
+      "outside_model_domain",
+      "quote_below_10bp"
+     ]
+    }
+   },
+   "META": {
+    "level": {
+     "official_bp": 115.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 1,
+     "basket_legs": 1,
+     "candidate_interval_bp": {
+      "high": 131.9,
+      "low": 77.0
+     },
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "ambiguous_upfront_sign",
+      "suspected_basket_leg"
+     ]
+    }
+   },
+   "ORCL": {
+    "level": {
+     "official_bp": 381.0,
+     "official_kind": "mixed",
+     "official_trades": 6,
+     "quoted_trades": 2
+    },
+    "quality": {
+     "accepted_trades": 6,
+     "ambiguous": 0,
+     "basket_legs": 1,
+     "candidate_interval_bp": {
+      "high": 385.3,
+      "low": 379.6
+     },
+     "invalid_quotes": 2,
+     "model_domain_errors": 0,
+     "reasons": [
+      "invalid_or_unresolved_quote_units",
+      "missing_price",
+      "quote_below_10bp",
+      "suspected_basket_leg"
+     ]
+    }
+   }
+  },
+  "2026-11-24": {
+   "CRWV": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 1,
+     "basket_legs": 0,
+     "candidate_interval_bp": {
+      "high": 1378.7,
+      "low": 9.9
+     },
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "ambiguous_upfront_sign",
+      "no_accepted_price"
+     ]
+    }
+   },
+   "META": {
+    "level": {
+     "official_bp": 120.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   },
+   "ORCL": {
+    "level": {
+     "official_bp": 366.0,
+     "official_kind": "quoted",
+     "official_trades": 2,
+     "quoted_trades": 2
+    },
+    "quality": {
+     "accepted_trades": 2,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   }
+  },
+  "2026-11-25": {
+   "CRWV": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 1,
+     "basket_legs": 0,
+     "candidate_interval_bp": {
+      "high": 1368.7,
+      "low": 13.9
+     },
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "ambiguous_upfront_sign",
+      "no_accepted_price"
+     ]
+    }
+   },
+   "META": {
+    "level": {
+     "official_bp": 124.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   },
+   "ORCL": {
+    "level": {
+     "official_bp": 373.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   }
+  },
+  "2026-11-26": {
+   "CRWV": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "no_accepted_price"
+     ]
+    }
+   },
+   "META": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "no_accepted_price"
+     ]
+    }
+   },
+   "ORCL": {
+    "level": {
+     "official_bp": 374.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   }
+  },
+  "2026-11-30": {
+   "CRWV": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "no_accepted_price"
+     ]
+    }
+   },
+   "META": {
+    "level": null,
+    "quality": {
+     "accepted_trades": 0,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": [
+      "no_accepted_price"
+     ]
+    }
+   },
+   "ORCL": {
+    "level": {
+     "official_bp": 376.0,
+     "official_kind": "quoted",
+     "official_trades": 1,
+     "quoted_trades": 1
+    },
+    "quality": {
+     "accepted_trades": 1,
+     "ambiguous": 0,
+     "basket_legs": 0,
+     "candidate_interval_bp": null,
+     "invalid_quotes": 0,
+     "model_domain_errors": 0,
+     "reasons": []
+    }
+   }
+  }
+ },
+ "decoder_version": "dtcc-strict-v2",
+ "ledger_quality": {
+  "cancelled_lineages": 1,
+  "effective_trades": 35,
+  "issue_counts": {
+   "ambiguous_correction_order": 1,
+   "conflicting_identifier": 1,
+   "cyclic_lineage": 1,
+   "orphan_lineage": 3,
+   "unknown_action": 1
+  },
+  "orphan_lineages": 3,
+  "quarantined_lineages": 5,
+  "status": "partial"
+ },
+ "schema": "acsi-dtcc-parity-expected-v1"
+}

@@ -80,6 +80,7 @@ def coupon(v):
     return (c if c <= 0.10 else None), norm
 
 
+DECODER_VERSION = 'dtcc-strict-v2'
 QUOTE_FLOOR = 0.001  # 10 bp: a quality rule for reported quotes only, never a sign rule for upfronts
 
 
@@ -560,7 +561,7 @@ def main():
                       'conflict_dates': [c['date'] for c in conflicts], 'lifecycle': by_day.quality,
                       'bounded_history': True, 'point_in_time_verified': False, 'settlement_eligible': False}
     quality_path = canon / 'cds_source_quality.json'
-    quality_doc = {'decoder_version': 'dtcc-strict-v2', 'research_only': True,
+    quality_doc = {'decoder_version': DECODER_VERSION, 'research_only': True,
                    'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source_quality': source_quality}
     quality_path.write_text(json.dumps(quality_doc, indent=2, sort_keys=True) + '\n')
     if status in ('invalid', 'unavailable'):
