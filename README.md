@@ -4,6 +4,8 @@ The AI Credit Stress Index ([aistress.si](https://aistress.si)), built in public
 
 The board: **[aistress.si/lab](https://aistress.si/lab)**
 
+**Start here: [current index manual](docs/current-index-manual.md).** It describes the deployed headline, the frozen weekly edition, the separate private bond basket and the remaining release gates. Historical methodology and findings remain linked for audit; they do not override the current manual.
+
 ## What the index is
 
 Two anchored stress scores. Debt stress comes from CoreWeave credit, Oracle 5-year CDS and secondary prices of AI data-center loans. GPU stress comes from H100 and Blackwell rents. The gap is debt minus GPU: above +15, the debt score exceeds the GPU score by the method's threshold. This does not establish fair value or a trading opportunity. Method v0.1 is in [METHOD.md](METHOD.md); v0.2 removes the upper score ceiling.
@@ -17,19 +19,17 @@ The historical levels and scorecard below were produced before this decoder and 
 they are **not validation of the current decoder**. Current readings can be unavailable when these checks fail.
 Published weekly editions are unchanged. Research calculations do not authorize institutional reliance or perp settlement.
 
-Since 27 Nov 2026 the live default is **method v0.2** (`methods/v0.2-live.yaml`): v0.1 with no ceiling. Under v0.1 a
-score stopped at 100 at the distress line, and CoreWeave's 5Y CDS has been past its 1,000 bp line on 24 days since
-14 Oct 2026, so the index could not show how far past distress it went. v0.2 lets it keep rising (CoreWeave at 1,373 bp
-scores 174.5). Same inputs, anchors and sources. Gap on 25 Nov 2026: **+67.8 on v0.2, +42.9 on v0.1**. Both are
-scored below and on the scoreboard. It was adopted without waiting for the forward test because it changes no fitted
-parameter; the forward test still runs.
+The deployed headline uses **method v0.2**: financing input scores have a zero floor and no upper ceiling, while the GPU score stays at the capped weekly-edition value. The lab configuration is `methods/v0.2-live.yaml`; its general scoring behavior differs from the website when inputs expire, are missing or exceed the GPU distress anchor, as detailed in the [current manual](docs/current-index-manual.md). It uses CoreWeave 5-year CDS as F1, Oracle 5-year CDS as F2, and the dated edition's loan/GPU inputs while their observation windows remain valid. The strict decoder accepts an upfront-implied price only when payment direction is unambiguous under the model. Missing or invalid required inputs withhold the current headline; they do not silently transfer weight to the remaining inputs.
 
-The rest is as before. Only the two CDS inputs move daily. F1 is a **model-implied** CoreWeave level, because CoreWeave
-has no quoted 5-year spread on the tape, so it is computed from upfront payments. Loans and GPU rents are **held at the
-24 Nov 2026 edition** and count only from that date. That makes the year of history the financing side (F1 and F2)
-alone. It is not yet a live debt-versus-GPU measure.
+At the 28 November release check, the current headline was unavailable. The bounded 42-file replay contained 87 eligible CoreWeave upfronts with ambiguous direction and no accepted CoreWeave daily level. The homepage therefore showed the **frozen 24 November v0.1 edition, gap +42.6** (rounded to +43 in its large display), with an explicit explanation. These are dated audit observations; `/api/index` reports the current status. The private bond basket does not enter this headline.
 
-v0.1 scored on 260 trading days (27 Oct 2025 to 25 Nov 2026), daily changes (v0.2 in brackets), on the tape as cleaned
+Only the CDS inputs can change with daily reports. Loans and GPU rents are held at the 24 November edition and do not supply an independently observed year of daily GPU/loan history. A historical financing-side backtest is not a backtest of the full debt-versus-GPU headline.
+
+## Historical evidence before the strict decoder
+
+The following values and scorecard are preserved as earlier research results, **not current prices or validation of `dtcc-strict-v1`**. The former decoder reported +67.8 on v0.2 and +42.9 on v0.1 for 25 November; those calculations relied on an upfront-direction assumption that the strict release removed. The current source/model checks cannot validate the former +67.8 as a current reading. v0.2 was adopted on 27 November without completing the lab's normal 20-session forward gate; removing the ceiling did not establish that the source or model passed that gate.
+
+The pre-strict decoder scored v0.1 on 260 trading days (27 Oct 2025 to 25 Nov 2026), daily changes (v0.2 in brackets), on the tape as cleaned
 on 28 Nov 2026 (`research/findings/2026-11-28-cds-contract-checks.md`):
 
 | Test | Baseline | Read |
@@ -54,8 +54,7 @@ The one-trade figure was 5.41 until 26 Nov 2026. It measured only trades removed
 resting on one trade as 0, and a constant loan value painted across the year diluted the rest by a third. Both are
 fixed. See `research/findings/2026-11-26-p0-tape-hygiene.md` and `research/findings/2026-11-26-frozen-legs-and-one-trade.md`.
 
-Open problems, in order: make it hard for one trade to move the index without lagging real repricings; find free,
-redistributable daily data for GPU rents and loan prices; decide what volatility the index should have.
+Current release gates include a supported forward bond feed, unambiguous and independently validated pricing, tested resistance to individual-print influence, daily GPU/loan inputs, approved default and revision economics, and publication/oracle operations. See the [current manual](docs/current-index-manual.md) and [acceptance gates](docs/reliability-release-2026-11-28.md).
 
 ## Connect your agent
 
@@ -94,9 +93,9 @@ Code: MIT. Run by [@gagattzo](https://github.com/gagattzo).
 
 ## Bond research repair, 28 November 2026
 
-The experimental cash-bond substitution has been removed from the production headline. The repaired research pipeline is separate from adopted v0.2; see [research methodology](docs/bond-research-v1.md) and [operational status](docs/production-repair-2026-11-28.md). Portal initialization returned HTTP 404 during the repair, so no new public fixing is published. This repository mirrors tested code. Automated bond collection is paused in both repositories; code validation remains enabled.
+The experimental cash-bond substitution has been removed from the production headline. The repaired research pipeline is separate from adopted v0.2; see [research methodology](docs/bond-research-v1.md) and [current operations](docs/bond-operations-v2.md). Portal initialization returned HTTP 404 during the repair, so no new public fixing is published. This repository mirrors tested code. Automated bond collection is paused in both repositories; code validation remains enabled.
 
-Saved private snapshots can produce retrospective candidate observations and [immutable research artifacts](docs/research-fixings-v1.md).
+Saved private snapshots produced **14 complete retrospective candidate observations across 45 dates** in the 28 November replay; public publication remains withheld. The retrospective 27 November candidate had 15.79% fresh fixed weight and 84.21% carried; the private level is not published here. The [research artifacts](docs/research-fixings-v1.md) freeze the calculation and provenance without asserting original historical availability or settlement eligibility.
 That calculation path is separate from successful daily collection: a private replay does not repair the unavailable
 source or prove that a value was observable on its historical date. The scoreboard preserves its prior results when
 source checks or any method score fail; `scoreboard/last_attempt.json` records the blocked refresh separately.
