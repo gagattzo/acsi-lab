@@ -1,62 +1,137 @@
-# Three decoder choices, tested on the tape's own answer key
+# Retrospective decoder diagnostics: three choices under review
 
 **Agent:** Claude (Opus 5.5), run by @gagattzo · **Code under test:** acsi-lab `09990a6` (dtcc-strict-v1) and
 Ai-credit-stress-index- `022c39b` · **Data:** 286 DTCC SEC credit end-of-day files, 22 Oct 2025 to 25 Nov 2026
 
+**Reviewer note — 28 November 2026.** The reported results are useful retrospective diagnostics, not a completed
+out-of-sample decoder validation or approval to change the live methodology. The full-year counts and appendix
+outputs below are the original author's reported results; this review inspected the scoring scripts and a bounded
+October–November source replay, but did not independently rerun all 286 files. In particular, the 4,063 retained
+quote/upfront records are **model-matched observations**, not an independently established answer key. This revision
+clarifies their selection, the interpretation of the error counts and the limits of the lifecycle analysis.
+The proposed lower quoted-spread bound remains **10 bp with no upper ceiling**.
+
+The reviewer also reran the unchanged `sign_ground_truth.py` on 42 cached files from 1 October through
+27 November 2026. It retained 1,180 model-matched records and excluded 18: the floor disagreed on 73 of 73
+5%-coupon decisions, while strict accepted 78 matching 1%-coupon cases. These bounded results reproduce the
+direction of the author's diagnostics, subject to the same sample-selection qualifications below; they do not
+independently reproduce the 286-file totals.
+
 ## Question
 The strict-decoder release (`2026-11-28-strict-decoder-validation.md`, `docs/reliability-release-2026-11-28.md`) made
-three choices that, together, take the live headline down. Should each
-be kept, reversed or narrowed? Judged by evidence the rules never used, not by argument: how often a rule is wrong where
-the answer is known, how much it can price, and what one trade can do to it.
+three choices that, together, can withhold the live headline. Which should be kept, reversed or narrowed?
+These diagnostics examine conditional errors, coverage and source blocking on historical data already inspected.
+A later release decision needs a frozen rule, predefined pass criteria, untouched issuer/time holdouts and a forward
+test. The scripts here do not establish a one-counterparty manipulation bound.
 
-## 1. The coupon floor for an upfront's sign: keep the strict choice
-The tape carries its own answer key: eligible on-the-run 5-year records, across every name, that report both a quoted
-spread and an upfront. The quote shows which of the upfront's two readings is right. 4,063 such records in the year.
+## 1. The coupon floor for an upfront's sign: retain strict abstention pending independent validation
+Some eligible on-the-run 5-year records report both a quoted spread and a UFRO amount. In
+`research/tools/sign_ground_truth.py`, a reported standard coupon is used when available. When it is blank, the
+script tries 1% and 5% coupons and both signs, retaining the record only if exactly one model candidate reproduces
+the quote within max(2 bp, 2%). The selected candidate becomes the evaluation label.
+
+The author reports **4,063 retained model-matched records and 573 excluded records** that matched neither or more
+than one candidate. The table therefore measures agreement with that selected label, conditional on this filter;
+it is not accuracy over every eligible trade.
 
 | | 1% coupon | 5% coupon |
 | --- | --- | --- |
-| Records | 3,785 | 278 |
-| Floor decides: right / wrong | 182 / 0 | **0 / 121** |
-| Strict rule accepts: right / wrong | 155 / 0 | 0 / 0 |
+| Retained model-matched records | 3,785 | 278 |
+| Floor decides: agrees / disagrees with selected label | 182 / 0 | **0 / 121** |
+| Strict accepts: agrees / disagrees with selected label | 155 / 0 | 0 / 0 |
 | Strict rule excludes | 3,630 (96%) | 278 (100%) |
 
-General Motors, Block, T-Mobile and Royal Caribbean trade a 5% coupon at 65–86 bp; the floor reads them near 1,200 bp.
-Upfront-only 5%-coupon trades of AMD, Royal Caribbean, Delta, Lennar and Netflix, whose quotes sit at 34–99 bp, are
-read at 1,146–1,340 bp. The 100 bp floor on 5% coupons (introduced in `2026-11-28-cds-contract-checks.md`) is wrong and
-stays out. The strict rule was never wrong, but it is nearly blind: the sign for CoreWeave has to come from outside the
-tape (for example the issuer's own bond spreads), and any such rule should pass this same test before it ships.
+**The strict rule's 155/155 agreement is not an independent zero-error result.** The sample is selected for a unique
+quote-matching model candidate. When the strict rule accepts its only feasible root, that root must also be the
+candidate that qualified the record for inclusion. This is a useful consistency check, but it cannot establish that
+the solver, payment interpretation or quote itself is economically correct.
 
-## 2. The quoted-spread sanity range: restore the lower bound, keep no ceiling
-34 eligible on-the-run quotes in the year fall outside 10–5,000 bp. All 34 are between 0.81 and 9.0 bp, on high-yield
+The script also uses the reported notional directly, including capped values marked with `+`; it does not recover
+the exact notional or exclude these records. This can affect the upfront fraction, inferred coupon and sign label.
+Validation must separately report explicit versus inferred coupons, exact versus capped notionals, and all
+nonmatches. A coupon inferred by fitting the evaluation quote is not independent contract evidence.
+
+Within the author's model-matched sample, General Motors, Block, T-Mobile and Royal Caribbean are assigned a 5%
+coupon at quoted spreads of 65–86 bp, while the floor selects a reading near 1,200 bp. The separately reported
+explicit 5%-coupon quotes at 34–99 bp, and nearby upfront-only observations for AMD, Royal Caribbean, Delta,
+Lennar and Netflix, also challenge the 100 bp floor. The nearby observations are within five days, not necessarily
+simultaneous, so they provide corroboration rather than a same-trade label.
+
+These are reasons to **keep the coupon floor out**. They do not validate an alternative sign selector.
+CoreWeave's two feasible readings still require independent information if a single price is to be produced.
+An issuer-bond rule is a research candidate: match the legal credit, seniority, maturity and observation time,
+account for bond/CDS basis and stale inputs, and keep the evaluation quote hidden from the predictor.
+Use independently established contract terms and trustworthy labels, measure abstentions and coverage, then test
+the entire CDS-plus-bond rule against manipulation before proposing adoption.
+
+## 2. The quoted-spread sanity range: research recommendation of a 10 bp lower bound, no ceiling
+The author reports 34 eligible on-the-run quotes outside 10–5,000 bp, all between 0.81 and 9.0 bp and on high-yield
 or distressed names (DISH DBS, Lumen, Macy's, Teva, Organon, Gap, Post, Aramark, American Airlines, Nova Chemicals,
-Standard Building, CoreWeave). dtcc-strict-v1 accepts them, which is how `python harness/dtcc.py` now writes CoreWeave
-levels of 4.5 bp (24 Oct 2025) and 1.2 bp (14 Apr 2026). None was above 5,000 bp, and the strict finding's point that
-a ceiling can hide a real repricing (its 4,000 bp test) stands. So: a 10 bp lower bound back, no upper bound.
+Standard Building, CoreWeave). The current decoder accepts such positive finite values. The author's full-year
+replay reports CoreWeave levels of 4.5 bp (24 Oct 2025) and 1.2 bp (14 Apr 2026).
 
-## 3. The lifecycle gate on the headline: narrow it
+The proposed repair is to quarantine quoted spreads below 10 bp for this research feed and retain diagnostics.
+The observed sample supports investigating a lower bound; it does not prove that a genuine sub-10 bp CDS trade is
+universally impossible. Units and field semantics still require validation. This quoted-input policy must never be
+used to declare an alternative upfront root economically impossible.
+
+**Do not restore an upper ceiling.** The author reports no quotes above 5,000 bp in this sample. Absence in this
+history does not justify suppressing a future distressed repricing. The lower-bound-only proposal is a research
+recommendation pending tests and a separate implementation review.
+
+## 3. The lifecycle gate on the headline: research recommendation to narrow by demonstrated impact
 Any quarantined lineage on one of our three names, or any missing requested file, marks the whole source partial and
-withholds the headline.
-- The site's 12-day window, replayed from every 5th file day (56 windows) through the lab's own `resolve_lifecycle`:
-  a quarantine blocks 52; in 16 the quarantined lineage holds a trade that could price CoreWeave or Oracle.
-- The site's own code agrees: the lifecycle check passes in 4 of 56 windows, CoreWeave is priced in 4, both in 0.
-- On a weekday before that day's file is published (clock fixed at 25 Nov 18:00 UTC, that day's file answering 404),
-  the source is `partial` and `calculation_eligible` is false, with reason `requested_file_unavailable`.
+withholds the headline in the code under test.
 
-Narrow the gate to records that could price a headline input; otherwise show the reading with its quality flags.
+The author reports:
+- The site's 12-day window, replayed from every 5th file day (56 windows) through the lab's own
+  `resolve_lifecycle`: a quarantine blocks 52 windows; in 16, an observed quarantined record satisfies the script's
+  conditions for a trade that could price CoreWeave or Oracle.
+- The site's own code passes the lifecycle check in 4 of 56 windows and prices CoreWeave at least once in 4; no
+  sampled window passes both checks.
+- On a simulated weekday before that day's file is published (clock fixed at 25 Nov 18:00 UTC and that day's file
+  answering 404), the source is `partial` and `calculation_eligible` is false, with reason
+  `requested_file_unavailable`.
+
+**The 16 windows measure a visible-record predicate, not actual headline impact or a validated safe classifier.** Incomplete lineages
+can lack the ancestor that establishes issuer, maturity, eligibility or a price previously carried into the headline.
+A correction can change those fields. An observed out-of-scope row therefore does not by itself prove that its
+unresolved lineage cannot affect a headline input. The remaining blocked windows cannot all be declared safe from
+this count. The recording hook keeps `nodes.values()`, which retains only the first version of a conflicting
+identifier; reordering conflicting eligible and ineligible versions can change this relevance result without
+changing the ledger's quarantine. Unknown-action and missing-identifier issues are outside this hook. Conversely,
+the predicate does not test successful pricing, basket exclusion or the execution/carry interval, so it can also
+count records that would never contribute. The 16 is therefore not a proven lower or upper bound on affected windows.
+
+A narrower gate should permit a calculation only when the pipeline can demonstrate that the unresolved records
+cannot affect the constituent values used. Unknown impact must remain explicit and fail closed for the affected
+calculation. Preserve broader source-quality flags even when a particular headline is unaffected. Separately,
+define the expected publication calendar/cutoff and distinguish the latest completed observation from an incomplete
+current session; an unpublished current-day file should not be mistaken for proof that a previously complete
+observation is invalid. These changes require lineage-level tests and replay before deployment.
 
 ## Limits
-- The answer key is mostly investment-grade names that quote spreads. CoreWeave never quotes a real spread, so the test
-  judges each rule in general, not CoreWeave's own sign.
-- Blank coupons are resolved to whichever standard coupon reproduces the quote within max(2 bp, 2%); 573 records match
-  neither or both and are left out. Explicit 5%-coupon quotes at 34–99 bp exist too (appendix).
-- Records are read file by file; a record cancelled later still counts. That does not change its quote-to-upfront
-  relation.
-- The window replays sample every 5th start day and assume every file is present, so they understate blocking.
-- The weekday check assumes DTCC answers 404 before publication; the site code blocks on other errors too.
-- When both readings clear the floor, the old rule chose by quotes or the previous level. That is not scored here;
-  `2026-11-28-stress-scenarios.md` showed one trade can attack it.
+- The paired observations mostly concern investment-grade names that quote spreads. CoreWeave has no independently
+  validated real quote labels in this study, so apparent performance on other issuers does not establish its sign.
+- Blank coupons are fitted to the same quote used to select the label; 573 unmatched or non-uniquely matched records
+  are excluded. The script does not independently recover capped notionals. Conditional results must be accompanied
+  by these exclusions and by explicit/inferred coupon and exact/capped notional breakdowns.
+- Records are read file by file, without cross-file lifecycle reconstruction. A later cancellation or correction can
+  identify a bad original record. Repeated reports and issuer/date clustering also mean records are not independent
+  validation trials.
+- The window replays sample every fifth file day and assume the requested files are present. They are not an exhaustive
+  operational-availability study. Visible-record relevance understates uncertainty from missing ancestors.
+- The weekday check simulates a 404 before publication; the site code blocks on other missing/error states too.
+- When both readings clear the old floor, the old rule chose by quotes or the previous level. That branch is not
+  scored here; `2026-11-28-stress-scenarios.md` separately demonstrates a one-trade attack.
+- No untouched holdout or forward test was performed by these scripts. No new bond-based sign rule or manipulation
+  guarantee is established here.
 
 ## How to reproduce
+These commands reproduce the author's diagnostics, not an independent validation. Pin the named code versions and
+retain source manifests to compare with the original reported window; a new download can contain later revisions
+and a different date range.
+
 ```
 python harness/dtcc.py --days 400        # raw DTCC files into data/raw/dtcc (a later run covers a later window)
 python research/tools/sign_ground_truth.py
@@ -64,13 +139,19 @@ python research/tools/lifecycle_gate_replay.py
 node research/tools/site_window_replay.js /path/to/Ai-credit-stress-index-
 node research/tools/weekday_block_check.js /path/to/Ai-credit-stress-index-
 ```
-The site checkout must be at `022c39b` or later; the JavaScript scripts call its `api/cds.js`.
 
-## What would prove it wrong
-- Floor: evidence that the 5%-coupon answer-key records misstate their coupon. The explicit 5%-coupon quotes at
-  34–99 bp would still stand against it.
-- Lower bound: one genuine trade on any name below 10 bp.
-- Gate: a quarantined record whose exclusion moves a headline input in a window the narrowed gate would let through.
+The JavaScript scripts call the site checkout's `api/cds.js`; the original output used `022c39b`.
+Later versions may legitimately produce different results.
+
+## What would change these conclusions
+- Floor: independently established contract terms and lifecycle-valid observations that invalidate the reported
+  counterexamples. Retain the explicit-coupon examples separately from fitted-coupon labels.
+- Lower bound: a verified genuine sub-10 bp trade in the intended feed/universe, or corrected units/semantics showing
+  that the suspect values should be decoded differently.
+- Gate: an unresolved lineage that changes a constituent or carried value in a case a proposed narrowed gate permits.
+  Missing ancestor information must be included in the test, not assumed irrelevant.
+- New sign rule: predefined error, coverage and attack criteria met on independently labelled untouched observations,
+  followed by forward testing. The historical model-matched sample alone is insufficient for adoption.
 
 ## Appendix: script outputs (28 Nov 2026)
 ### research/tools/sign_ground_truth.py
