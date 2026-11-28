@@ -10,13 +10,18 @@ Canonical: data/canonical/cds_trades.csv          one row per priced trade (sche
 
 Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.py):
   - CDS rows only: no loans (LX ids), total return swaps or delayed-draw loans; needs a coupon or a quoted spread
-  - cancelled trades (EROR) removed, corrections (CORR) replace the record they correct, same-day executions only
+  - eligible trades only: USD, senior (UPI FISN "CDS Corp SN Sr"), $1M notional or more, no package, non-standard or
+    post-priced flag, and no novation (Event type NOVA; a blank Event type, as in older files, is a trade)
+  - one ledger across files: a cancellation (EROR) or correction (CORR) applies whichever later file it arrives in, and
+    a late report is priced on its execution day (weekdays only)
   - on-the-run 5-year maturity only (ISDA semi-annual roll, 20 Mar / 20 Sep)
   - coupons written in percent (1 = 1%) are divided by 100; only 0 < coupon <= 10% is kept (issue #7)
   - quoted spreads as decimals (0.0365) or raw bp (365) are both read; only 10-5,000 bp is kept; 0 or blank = not quoted
   - an upfront is read only when Other payment type is UFRO (UWIN = unwind, not an entry price); blank = missing, not 0
-  - upfront trades converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate); DTCC upfronts are
-    unsigned, so the feasible reading (10 bp or more) closer to the day's quoted median (or the previous level) wins
+  - upfront trades on a standard coupon (1% or 5%) converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate).
+    DTCC upfronts are unsigned, so each has two readings. A reading under the floor for its coupon (10 bp on 1%, 100 bp
+    on 5%) is impossible and the trade decides alone; otherwise the reading nearer the day's eligible quoted median
+    (or the previous level) wins, and n_sign_from_reference counts those trades
   - quoted and upfront-implied spreads are kept in separate columns. Official level: the median of all the day's priced
     trades; official_kind says what it rests on (quoted, upfront_implied or mixed). Quoted-only was tested and rejected:
     on Oracle the two differ by a median 1.3 bp, and dropping implied prints more than doubles the days resting on
@@ -37,9 +42,10 @@ ENTITIES = {  # id: (name match, RED code)
 DAY = 86400.0
 RATE, RECOVERY = 0.045, 0.40
 TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread_bp', 'coupon', 'coupon_normalised',
-                'upfront_pct', 'notional_capped']
+                'upfront_pct', 'notional_capped', 'sign_by']
 DAILY_FIELDS = ['date', 'entity', 'official_bp', 'official_kind', 'official_trades', 'quoted_median_bp', 'quoted_trades',
-                'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised']
+                'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised',
+                'n_ambiguous', 'n_sign_from_reference']
 MAN_FIELDS = ['date', 'url', 'bytes', 'sha256', 'fetched_at']
 CONFLICT_FIELDS = ['date', 'manifest_sha256', 'new_sha256', 'new_bytes', 'path', 'fetched_at']
 
@@ -149,6 +155,99 @@ def is_cds(r):
     return (fnum(r.get('Fixed rate-Leg 1')) or 0) > 0 or (fnum(r.get('Spread-Leg 1')) or 0) > 0
 
 
+# --- which trades may price the index ---------------------------------------------------------------------------------
+# Only a standard, new, USD senior single-name CDS trade of at least MIN_NOTIONAL prices a level: novations, packages,
+# non-standard and post-priced terms, other currencies, other seniorities and odd lots price nothing.
+MIN_NOTIONAL = 1_000_000
+STANDARD_COUPONS = (0.01, 0.05)
+# An unsigned upfront has two readings. The lower one is only plausible above this floor for its coupon: a name quoted on
+# a 5% coupon does not trade at 12 bp (that is the wrong sign of a 23% upfront), and nothing trades under 10 bp.
+PLAUSIBLE_FLOOR = {0.01: 0.001, 0.05: 0.01}
+
+
+def _flag(v):
+    return str(v if v is not None else '').strip().upper() == 'TRUE'
+
+
+def eligible(r):
+    # Event type is blank in older files (the field was filled later); only an explicit non-trade event (NOVA) is out.
+    if str(r.get('Event type', '')).strip().upper() not in ('', 'TRAD'):
+        return False
+    if str(r.get('Notional currency-Leg 1', '')).strip().upper() != 'USD':
+        return False
+    if str(r.get('Other payment currency', '')).strip().upper() not in ('', 'USD'):
+        return False
+    if any(_flag(r.get(k)) for k in ('Package indicator', 'Non-standardized term indicator', 'Post-priced swap indicator')):
+        return False
+    if 'CDS CORP SN SR' not in str(r.get('UPI FISN', '')).upper():
+        return False
+    n = fnum(r.get('Notional amount-Leg 1'))
+    return n is not None and n >= MIN_NOTIONAL
+
+
+def standard_coupon(c):
+    return next((s for s in STANDARD_COUPONS if c is not None and abs(c - s) < 1e-9), None)
+
+
+def resolve_upfront(hi, lo, c, ref, pct):
+    """(spread, decided_by) for an unsigned upfront, or (None, 'ambiguous'). DTCC does not publish who paid an upfront,
+    so a trade has two readings. A reading under the floor for its coupon is impossible (a 5%-coupon name at 12 bp is
+    the wrong sign of a 23% upfront), and then the trade decides alone. With two plausible readings the one nearer the
+    reference (the day's eligible quotes, else the last official level) is taken; with no reference, a large upfront (2%
+    or more) is read as wider than the coupon, and a small one is dropped."""
+    if abs(hi - lo) < 1e-9:
+        return hi, 'trade'  # a zero upfront: the spread is the coupon
+    floor = PLAUSIBLE_FLOOR.get(c)
+    if floor is None:
+        return None, 'ambiguous'
+    plausible = [x for x in (hi, lo) if floor <= x < 1]
+    if len(plausible) == 1:
+        return plausible[0], 'trade'
+    if not plausible:
+        return None, 'ambiguous'
+    if ref is not None:
+        return min(plausible, key=lambda x: abs(x - ref)), 'reference'
+    return (hi, 'large_upfront') if pct >= 0.02 else (None, 'ambiguous')
+
+
+def entity_of(r):
+    text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' +
+            str(r.get('Underlier ID-Leg 1', ''))).upper()
+    return next((eid for eid, (match, red) in ENTITIES.items() if match in text or red in text), None)
+
+
+def slim(rows):
+    """What the ledger needs from one file: every cancellation id, and the new and corrected trades of our names."""
+    return ({r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier') for r in rows if r.get('Action type') == 'EROR'},
+            [r for r in rows if r.get('Action type') in ('NEWT', 'CORR') and entity_of(r)])
+
+
+def ledger(files):
+    """files: [(file_day, (cancelled_ids, rows))] in date order. Applies every cancellation and correction in the window,
+    whichever later file it arrives in, and returns the surviving trades grouped by execution date (weekdays)."""
+    cancelled = set().union(*(f[1][0] for f in files)) if files else set()
+    keep = {}
+    for _, (_, rows) in files:
+        for r in rows:
+            act = r.get('Action type')
+            key = (r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier')) if act == 'CORR' else r.get('Dissemination Identifier')
+            if key in cancelled or r.get('Dissemination Identifier') in cancelled:
+                continue
+            if act == 'NEWT' and key in keep:
+                continue
+            keep[key] = r
+    by_day = {}
+    for r in keep.values():
+        d = str(r.get('Execution Timestamp', ''))[:10]
+        try:
+            if dt.date.fromisoformat(d).weekday() >= 5:
+                continue
+        except ValueError:
+            continue
+        by_day.setdefault(d, []).append(r)
+    return by_day
+
+
 def clean(rows, day):
     cancelled = {r.get('Original Dissemination Identifier') or r.get('Dissemination Identifier') for r in rows if r.get('Action type') == 'EROR'}
     keep = {}
@@ -165,15 +264,17 @@ def clean(rows, day):
     return [r for r in keep.values() if str(r.get('Execution Timestamp', ''))[:10] == day]
 
 
-def parse_day(rows, day, prev):
-    """Returns (levels, trades): levels[entity] = daily row; trades = list of canonical trade rows."""
-    rows = clean(rows, day)
+def parse_day(rows, day, prev, cleaned=False):
+    """Returns (levels, trades): levels[entity] = daily row; trades = list of canonical trade rows.
+    rows are one file's rows (cleaned here, same-day executions only) or, with cleaned=True, a ledger day."""
+    if not cleaned:
+        rows = clean(rows, day)
     levels, trades = {}, []
     for eid, (match, red) in ENTITIES.items():
         quoted, ups = [], []
         for r in rows:
             text = (str(r.get('Underlying Asset Name', '')) + ' ' + str(r.get('UPI Underlier Name', '')) + ' ' + str(r.get('Underlier ID-Leg 1', ''))).upper()
-            if not ((match in text or red in text) and is_cds(r)):
+            if not ((match in text or red in text) and is_cds(r) and eligible(r)):
                 continue
             ex, exp = ts(r.get('Execution Timestamp')), ts(str(r.get('Expiration Date', '')) + 'T00:00:00Z')
             if ex is None or exp is None or exp != on_the_run_5y(ex):
@@ -187,26 +288,26 @@ def parse_day(rows, day, prev):
             ufro = str(r.get('Other payment type', '')).strip().upper() == 'UFRO'
             pct = amt / N if (ufro and N and N > 0 and amt is not None) else None
             meta = {'dissemination_id': r.get('Dissemination Identifier', ''), 'exec_ts': r.get('Execution Timestamp', ''),
-                    'coupon': C, 'coupon_normalised': norm, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
+                    'coupon': standard_coupon(C) or C, 'coupon_normalised': norm, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
             q = quoted_spread(r.get('Spread-Leg 1'))
             if fnum(r.get('Spread-Leg 1')):
                 if q is not None:
                     quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(abs(pct) * 100, 4))))
-            elif pct is not None and C:
+            elif pct is not None and standard_coupon(C):
+                C = standard_coupon(C)
                 ups.append((spread_from_upfront(abs(pct), C, T, accr), spread_from_upfront(-abs(pct), C, T, accr), abs(pct), ex,
                             dict(meta, kind='upfront', upfront_pct=round(abs(pct) * 100, 4))))
+        # Reference for two plausible readings: the day's eligible quotes (a $1 or odd-lot quote is not eligible), else
+        # the last official level.
         ref = statistics.median([x[0] for x in quoted]) if quoted else (prev[eid] / 10000 if prev.get(eid) else None)
-        implied = []
-        ok = lambda x: 0.001 <= x < 1  # a reading at the solver's floor (under 10 bp) is the impossible sign, not a price
+        implied, n_amb, n_ref = [], 0, 0
         for hi, lo, p, ex, meta in ups:
-            s = None
-            feasible = [x for x in (hi, lo) if ok(x)]
-            if ref is not None and feasible:
-                s = min(feasible, key=lambda x: abs(x - ref))
-            elif ref is None and p >= 0.02 and ok(hi):
-                s = hi
-            if s is not None:
-                implied.append((s, ex, meta))
+            s, by = resolve_upfront(hi, lo, meta['coupon'], ref, p)
+            if s is None:
+                n_amb += 1
+                continue
+            n_ref += by != 'trade'
+            implied.append((s, ex, dict(meta, sign_by=by)))
         if not quoted and not implied:
             continue
         official = quoted + implied
@@ -222,7 +323,8 @@ def parse_day(rows, day, prev):
                        'loo_bp': None if loo is None else round(loo * 10000, 1),
                        'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat(),
                        'n_capped': sum(1 for x in official if x[2]['notional_capped']),
-                       'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised'])}
+                       'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised']),
+                       'n_ambiguous': n_amb, 'n_sign_from_reference': n_ref}
         for s, ex, meta in official:
             trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
     return levels, trades
@@ -341,11 +443,13 @@ def main():
 
     added, conflicts = check_provenance(days, blobs, raw, man_path, ROOT / 'manifests' / 'dtcc_conflicts.csv')
 
+    # One ledger over every file: a cancellation or correction applies whichever later file it arrives in, and a trade
+    # reported late is priced on the day it was executed.
+    by_day = ledger([(d, slim(rows_of(blobs[d]))) for d in days if blobs[d]])
+    first = min((d for d in days if blobs[d]), default=None)
     prev, daily, trades = {}, [], []
-    for d in days:
-        if not blobs[d]:
-            continue
-        lv, tr = parse_day(rows_of(blobs[d]), d, prev)
+    for d in sorted(x for x in by_day if first and x >= first):
+        lv, tr = parse_day(by_day[d], d, prev, cleaned=True)
         for eid, v in lv.items():
             prev[eid] = v['official_bp']
             daily.append(v)

@@ -48,6 +48,25 @@ days". Do the numbers support that?
 there are short spells of co-movement, but no evidence that it locks to the Nasdaq on selloff days." Do not pitch
 independence or "tail beta" on these numbers.
 
+## Update, 28 Nov 2026: rerun on the tape with contract checks
+`research/findings/2026-11-28-cds-contract-checks.md` removed records that are not prices (packages, novations, odd
+lots, post-priced trades) and cancellations filed later. Same script, 259 paired sessions (28 Oct 2025 to 25 Nov 2026):
+
+| | v0.1-live | v0.2-live |
+| --- | --- | --- |
+| Daily R² | 0.023 | 0.083 |
+| Weekly R², by start session | 0.071 · 0.173 · 0.173 · 0.037 · 0.053 | 0.239 · 0.170 · 0.221 · 0.079 · 0.088 |
+| Rolling 10-day peak R² (chance median, p) | 0.726 (0.653, p 0.24) | 0.726 (0.653, p 0.23) |
+| Rolling 20-day peak R² (chance median, p) | 0.570 (0.311, p 0.02) | 0.570 (0.316, p 0.01) |
+| Worst 10% Nasdaq days (25): R² · average index move (chance, p) | 0.000 · +0.06 (+0.14, p 0.55) | 0.004 · +1.46 (+0.15, p 0.09) |
+| Worst 5% Nasdaq days (12): R² · average index move (chance, p) | 0.089 · −0.38 (+0.12, p 0.71) | 0.107 · +1.01 (+0.28, p 0.24) |
+| One-day lag R² | 0.021 | 0.006 |
+
+The conclusions hold: no lock-in on selloff days, a weekly R² that depends on the start day, short spells of
+co-movement. The levels moved: cleaner data shows more daily co-movement (v0.2 daily R² 0.05 → 0.08) and the 10-day
+peak is now chance. Say publicly: "Broad markets explain about 5% to 11% of daily moves; weekly estimates run 4% to 24%
+depending on the start day; no evidence it locks to the Nasdaq on selloff days."
+
 ## How to reproduce
 ```
 python harness/dtcc.py --days 400
