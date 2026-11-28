@@ -6,9 +6,16 @@ The board: **[aistress.si/lab](https://aistress.si/lab)**
 
 ## What the index is
 
-Two scores from 0 to 100. Debt stress comes from CoreWeave credit, Oracle 5-year CDS and secondary prices of AI data-center loans. GPU stress comes from H100 and Blackwell rents. The gap is debt minus GPU: above +15, lenders are far more worried than GPU rents justify. Method v0.1 is in [METHOD.md](METHOD.md).
+Two anchored stress scores. Debt stress comes from CoreWeave credit, Oracle 5-year CDS and secondary prices of AI data-center loans. GPU stress comes from H100 and Blackwell rents. The gap is debt minus GPU: above +15, the debt score exceeds the GPU score by the method's threshold. This does not establish fair value or a trading opportunity. Method v0.1 is in [METHOD.md](METHOD.md); v0.2 removes the upper score ceiling.
 
 ## Where it stands
+
+**Strict-decoder release, 28 November 2026:** `dtcc-strict-v1` excludes ambiguous unsigned upfronts instead of guessing
+their sign from a coupon floor, a nearby quote or the previous level. Source and lifecycle failures have explicit
+quality states. [Release details and acceptance gates](docs/reliability-release-2026-11-28.md).
+The historical levels and scorecard below were produced before this decoder and are retained as an audit record;
+they are **not validation of the current decoder**. Current readings can be unavailable when these checks fail.
+Published weekly editions are unchanged. Research calculations do not authorize institutional reliance or perp settlement.
 
 Since 27 Nov 2026 the live default is **method v0.2** (`methods/v0.2-live.yaml`): v0.1 with no ceiling. Under v0.1 a
 score stopped at 100 at the distress line, and CoreWeave's 5Y CDS has been past its 1,000 bp line on 24 days since
@@ -34,13 +41,14 @@ on 28 Nov 2026 (`research/findings/2026-11-28-cds-contract-checks.md`):
 | Weekdays with a same-day CoreWeave CDS trade | 61% | Oracle: 97% |
 | Inputs from sources we may not redistribute | 3 of 5 | Loans (press), H100 and Blackwell rents (Silicon Data) |
 
-On 28 Nov 2026 the tape got contract checks (`research/findings/2026-11-28-cds-contract-checks.md`): only USD, senior,
-$1M-plus trades price, never novations, packages, basket legs or post-priced trades; cancellations and corrections
-apply across files; an upfront's sign is read from the trade alone whenever the other reading is impossible for its
-coupon. 10% of records turned out not to be prices, 66 were basket legs, and 99 trades behind past levels had been
-cancelled. The tape got thinner and the
-scorecard above moved with it; the levels behind the live headline did not change. The site runs the same rules,
-checked level for level against this harness.
+The earlier 28 Nov contract checks (`research/findings/2026-11-28-cds-contract-checks.md`) restricted the tape to USD,
+senior, $1M-plus trades and excluded novations, flagged packages and post-priced trades. The reported 66 matching
+cross-name upfronts were **suspected basket legs**, identified by a heuristic, not verified package identities.
+That decoder also treated 10/100 bp coupon-dependent floors as proof of payment direction. That assumption was wrong:
+a fixed coupon does not establish a minimum par spread. The strict decoder removes it and validates model roots.
+If both signs have valid roots, neither is accepted; if the solver cannot establish a root within its domain, it
+does not silently return a boundary value. Python/JavaScript parity establishes consistent implementation, not
+independent economic validation of the simplified model.
 
 The one-trade figure was 5.41 until 26 Nov 2026. It measured only trades removed within a day, so it scored a day
 resting on one trade as 0, and a constant loan value painted across the year diluted the rest by a third. Both are
@@ -86,4 +94,9 @@ Code: MIT. Run by [@gagattzo](https://github.com/gagattzo).
 
 ## Bond research repair, 28 November 2026
 
-The experimental cash-bond substitution has been removed from the production headline. The repaired research pipeline is separate from adopted v0.2; see [research methodology](docs/bond-research-v1.md) and [operational status](docs/production-repair-2026-11-28.md). The current portal initialization returns HTTP 404, so no new fixing is published. This repository mirrors tested code. Automated bond collection is paused in both repositories; code validation remains enabled.
+The experimental cash-bond substitution has been removed from the production headline. The repaired research pipeline is separate from adopted v0.2; see [research methodology](docs/bond-research-v1.md) and [operational status](docs/production-repair-2026-11-28.md). Portal initialization returned HTTP 404 during the repair, so no new public fixing is published. This repository mirrors tested code. Automated bond collection is paused in both repositories; code validation remains enabled.
+
+Saved private snapshots can produce retrospective candidate observations and [immutable research artifacts](docs/research-fixings-v1.md).
+That calculation path is separate from successful daily collection: a private replay does not repair the unavailable
+source or prove that a value was observable on its historical date. The scoreboard preserves its prior results when
+source checks or any method score fail; `scoreboard/last_attempt.json` records the blocked refresh separately.
