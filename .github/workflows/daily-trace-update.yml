@@ -1,62 +1,51 @@
-name: daily-trace-update
+name: bond-research-validation
+# Collection is paused: no cron, raw-source uploads or publication from this job.
+# Restore scheduling only after private execution and retention pass an end-to-end run.
 on:
-  schedule:
-    # UTC, after US close in both daylight-saving regimes.
-    - cron: '30 23 * * 1-5'
-    # Retry late inputs the following morning, including Saturday after Friday.
-    - cron: '0 7 * * 2-6'
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/daily-trace-update.yml'
-concurrency:
-  group: daily-trace-update
-  cancel-in-progress: false
+      - 'harness/**'
+      - 'tests/**'
+      - 'requirements-bonds.txt'
+      - 'index.html'
+      - 'headline.js'
+      - 'api/**'
+  pull_request:
+    paths:
+      - '.github/workflows/daily-trace-update.yml'
+      - 'harness/**'
+      - 'tests/**'
+      - 'requirements-bonds.txt'
+      - 'index.html'
+      - 'headline.js'
+      - 'api/**'
 permissions:
-  contents: write
+  contents: read
 jobs:
-  update-trace:
-    if: github.repository == 'gagattzo/Ai-credit-stress-index-' && github.ref == 'refs/heads/main'
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Install dependencies
+        run: python -m pip install -r requirements-bonds.txt
+      - name: Validate bond pipeline regressions
+        run: python -m pytest -q tests/test_bond_research.py tests/test_daily_runner.py tests/test_finra_snapshots.py tests/test_source_archive.py
+      - name: Validate homepage when present
         run: |
-          python -m pip install -r requirements-bonds.txt
-      - name: Validate pipeline regressions
-        run: |
-          python -m pytest -q tests
-          node --test tests/headline.test.js
-      # Raw source material must not be retained in this public repository or its artifacts.
-      # The collector is available for a private execution environment; this public job
-      # deliberately fails before collection until that storage/execution is configured.
-      - name: Require private source retention before automated collection
-        if: github.event.repository.private != true
-        run: |
-          echo '::error::Collection paused: configure private source retention. Public source-archive publication is not authorized. Existing market observations remain unchanged.'
-          exit 1
-      - name: Collect and preserve research inputs privately
-        id: collect
-        continue-on-error: true
-        run: python harness/daily_trace_update.py
-      - name: Commit approved derived research outputs
-        if: always() && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure')
-        run: |
-          python harness/validate_bond_publication.py
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add data/acsi_bond_*.json data/bond_revisions/
-          if ! git diff --cached --quiet; then
-            git commit -m 'chore: update bond research observation and quality status'
-            git push origin HEAD:main
+          if [ -f tests/headline.test.js ]; then
+            node --test tests/headline.test.js
           fi
-      - name: Surface collection failure
-        if: steps.collect.outcome == 'failure'
+      - name: Report collection state
         run: |
-          echo 'Bond research update incomplete. Last valid observations retained; inspect the quality manifest.' >&2
-          exit 1
+          echo '### Bond collection is paused' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Code validation only. No sources collected and no market observations published. Scheduling remains disabled until private execution and retention are verified.' >> "$GITHUB_STEP_SUMMARY"

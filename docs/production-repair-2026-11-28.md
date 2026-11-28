@@ -8,7 +8,7 @@ Bond research has its own method version, bond-research-v1. Partial-universe tre
 
 The existing collector initialization endpoint returns HTTP 404. FINRA's public bond page loads in the browser, but search requires agreement acceptance; no replacement collection endpoint or automated access has been verified. The website itself must not be described as down.
 
-The production workflow is scheduled for 23:30 UTC weekdays and 07:00 UTC the following morning. It runs regression checks, then deliberately stops before collection in the public repository: private source execution and durable retention must be configured first. Daily collection is not operational. The mirrored lab workflow does not collect, avoiding competing publishers. No paid source or purchase is configured.
+The former daily collection workflow now validates code on relevant pull requests, pushes and manual dispatch only. Its cron schedules and deliberate failure step have been removed in production and the lab. It has read-only repository permissions, collects no sources and publishes no observations. Scheduling remains paused until private source execution and durable retention pass an end-to-end run. No paid source or purchase is configured.
 
 The internal runner preserves failed-source inputs, actual market dates, independent Treasury progress and explicit quality status. Private raw files/logs live in ignored private_data/. Immutable source archives use AES-256-GCM with an RSA-4096-wrapped random key. Existing archives are saved in AISTRESS_Private_Source_Checkpoint.zip, privately, with the recovery key in the separate private recovery bundle. Neither source archives nor the private key may be committed or uploaded to public workflow artifacts.
 
@@ -18,4 +18,8 @@ Public configuration uses stable IDs and TRACE symbols. Plaintext source files a
 
 Cancellation/correction lineage and issue-specific yield conventions remain unverified. Default events are persistent and manually maintained; a declared default stops reference publication until a recovery rule is calibrated and approved. The verified market calendar expires after 1 January 2027 and must be extended from SIFMA. Equal borrower weights do not eliminate common tenant exposure. This is research-only: neither the bond series nor the headline is approved here as a perpetual settlement reference.
 
-Validation: 28 Python regression tests and 10 Node tests pass. Browser verification confirmed the dated CDS headline and share card both display +67.8, using Oracle 25 November and CoreWeave 24 November observations; the bond quality panel is visible. Third-party cached social previews may retain an earlier image until refreshed.
+Validation: 28 Python regression tests and 12 Node tests pass in production. Browser verification confirmed the dated CDS headline and share card both display +67.8, using Oracle 25 November and CoreWeave 24 November observations; the bond quality panel is visible. Third-party cached social previews may retain an earlier image until refreshed.
+
+## Public evidence status
+
+As checked on 28 November, all 45 daily rows have null basket levels. The site therefore provides no validated basket history or purchase-decision evidence. Diagnostic input coverage is not a published index reading. On 27 November, the configured filter (at least three customer trades of $100,000 or more) produced six fresh bond marks, with 18 carried; do not describe 23 of 24 as fresh under this filter. Private test findings remain separate from public validation. The homepage shows a compact research-preview state and keeps source diagnostics and the last collected table inside an expandable details panel.
