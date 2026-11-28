@@ -19,9 +19,12 @@ Cleaning rules (same as aistress.si/api/cds; each has a test in tests/test_dtcc.
   - quoted spreads as decimals (0.0365) or raw bp (365) are both read; unresolved units rejected; 0 or blank = not quoted
   - an upfront is read only when Other payment type is UFRO (UWIN = unwind, not an entry price); blank = missing, not 0
   - upfront trades on a standard coupon (1% or 5%) converted to a par spread (flat hazard, 40% recovery, 4.5% flat rate).
-    DTCC upfronts are unsigned, so each has two readings. Two distinct feasible roots are ambiguous and excluded.
-    Only a root below zero hazard proves the alternative infeasible in this model; a numerical-domain failure blocks
-    the trade. Quotes and previous levels never select a sign. The fixed model is not an ISDA validation.
+    DTCC upfronts are unsigned, so each has two readings, one on each side of the coupon. Only a root below zero
+    hazard proves the alternative infeasible in this model; a numerical-domain failure blocks the trade. When both
+    readings are feasible, the side of the coupon comes from the name's latest dated public CDS mark
+    (harness/sign_attestations.json; attested_side): at most 21 days old, at least 1.5x away from the coupon, and only
+    for readings at least 2x apart. Otherwise the trade stays ambiguous and prices nothing. DTCC trades still set the
+    level. Quotes, previous levels and ratings never select a sign. The fixed model is not an ISDA validation.
   - suspected basket legs quarantined: eligible on-the-run CDS upfronts matching to a millionth of notional across
     our names within 120 seconds. This is a heuristic, not proof of a basket (n_basket_legs).
   - quoted and upfront-implied spreads are kept in separate columns. Official level: the median of all the day's priced
@@ -49,10 +52,11 @@ ENTITIES = {  # id: (name match, RED code)
 DAY = 86400.0
 RATE, RECOVERY = 0.045, 0.40
 TRADE_FIELDS = ['date', 'entity', 'dissemination_id', 'exec_ts', 'kind', 'spread_bp', 'coupon', 'coupon_normalised',
-                'upfront_pct', 'notional_capped', 'sign_by']
+                'upfront_pct', 'notional_capped', 'sign_by', 'sign_mark_date']
 DAILY_FIELDS = ['date', 'entity', 'official_bp', 'official_kind', 'official_trades', 'quoted_median_bp', 'quoted_trades',
                 'upfront_implied_bp', 'upfront_trades', 'loo_bp', 'last_trade', 'n_capped', 'n_percent_coupon_normalised',
-                'n_ambiguous', 'n_sign_from_reference', 'n_basket_legs', 'n_model_domain_errors', 'n_invalid_quotes']
+                'n_ambiguous', 'n_sign_from_reference', 'n_sign_attested', 'n_basket_legs', 'n_model_domain_errors',
+                'n_invalid_quotes']
 MAN_FIELDS = ['date', 'url', 'bytes', 'sha256', 'fetched_at']
 CONFLICT_FIELDS = ['date', 'manifest_sha256', 'new_sha256', 'new_bytes', 'path', 'fetched_at']
 
@@ -80,8 +84,68 @@ def coupon(v):
     return (c if c <= 0.10 else None), norm
 
 
-DECODER_VERSION = 'dtcc-strict-v2'
+DECODER_VERSION = 'dtcc-attested-v3'
 QUOTE_FLOOR = 0.001  # 10 bp: a quality rule for reported quotes only, never a sign rule for upfronts
+SIGN_ATTESTATIONS_PATH = pathlib.Path(__file__).resolve().parent / 'sign_attestations.json'
+ATTESTATION_SCHEMA = 'acsi-sign-attestations-v1'
+
+
+def validate_attestations(doc):
+    """Fail on a malformed marks file rather than silently pricing or not pricing a name."""
+    if not isinstance(doc, dict) or doc.get('schema') != ATTESTATION_SCHEMA:
+        raise ValueError('sign attestations: unknown schema')
+    for k, low in (('max_age_days', 0), ('decisive_factor', 1), ('min_reading_ratio', 1)):
+        v = doc.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= low:
+            raise ValueError(f'sign attestations: {k} must be a number above {low}')
+    seen = set()
+    for m in doc.get('marks') or []:
+        if m.get('entity') not in ENTITIES:
+            raise ValueError(f"sign attestations: unknown entity {m.get('entity')!r}")
+        d = str(m.get('date', ''))
+        try:
+            ok = dt.date.fromisoformat(d).isoformat() == d
+        except ValueError:
+            ok = False
+        bp = m.get('reported_bp')
+        if not ok or isinstance(bp, bool) or not isinstance(bp, (int, float)) or not math.isfinite(bp) or bp <= 0:
+            raise ValueError(f'sign attestations: bad date or level in {m!r}')
+        if not str(m.get('url', '')).startswith('https://') or not str(m.get('reported_by', '')).strip():
+            raise ValueError(f'sign attestations: every mark needs reported_by and an https url: {m!r}')
+        if (m['entity'], d) in seen:
+            raise ValueError(f"sign attestations: two marks for {m['entity']} on {d}")
+        seen.add((m['entity'], d))
+    return doc
+
+
+def load_attestations(path=SIGN_ATTESTATIONS_PATH):
+    return validate_attestations(json.loads(pathlib.Path(path).read_text()))
+
+
+SIGN_ATTESTATIONS = load_attestations()
+
+
+def attested_side(entity, day, coupon_rate, hi, lo, attestations=None):
+    """Which of an unsigned upfront's two feasible readings to keep: (spread or None, reason, mark date or None).
+
+    hi is the reading above the coupon (protection buyer pays the upfront), lo the one below. The name's latest
+    public mark dated on or before the execution day decides the side if it is at most max_age_days old and at least
+    decisive_factor times away from the coupon, and only when the two readings are at least min_reading_ratio apart:
+    near the coupon the side can flip between marks, so those trades stay ambiguous. The mark never sets the level.
+    """
+    a = SIGN_ATTESTATIONS if attestations is None else attestations
+    marks = [m for m in a['marks'] if m['entity'] == entity and m['date'] <= day]
+    if not marks:
+        return None, 'no_public_mark', None
+    m = max(marks, key=lambda x: x['date'])
+    if (dt.date.fromisoformat(day) - dt.date.fromisoformat(m['date'])).days > a['max_age_days']:
+        return None, 'public_mark_stale', m['date']
+    c_bp, k = coupon_rate * 10000, a['decisive_factor']
+    if not (m['reported_bp'] >= k * c_bp or m['reported_bp'] <= c_bp / k):
+        return None, 'public_mark_near_coupon', m['date']
+    if not hi >= a['min_reading_ratio'] * lo:
+        return None, 'readings_near_coupon', m['date']
+    return (hi if m['reported_bp'] > c_bp else lo), 'attested_side', m['date']
 
 
 def quote_status(v):
@@ -299,7 +363,8 @@ class LedgerDays(dict):
 
 
 def ledger(files, track_all=False):
-    rows, quality = resolve_lifecycle([r for _, (_, rs) in files for r in rs], (lambda r: True) if track_all else entity_of)
+    rows, quality = resolve_lifecycle([r for _, (_, rs) in files for r in rs], (lambda r: True) if track_all else entity_of,
+                                      entity_of)
     by_day = LedgerDays()
     for r in rows:
         d = str(r.get('Execution Timestamp', ''))[:10]
@@ -319,10 +384,11 @@ def clean(rows, day):
     return ledger([(day, slim(rows))], track_all=True).get(day, [])
 
 
-def parse_day(rows, day, prev, cleaned=False, quality=None):
+def parse_day(rows, day, prev, cleaned=False, quality=None, attestations=None):
     """Returns (levels, trades): levels[entity] = daily row; trades = list of canonical trade rows.
     rows are one file's rows (cleaned here, same-day executions only) or, with cleaned=True, a ledger day.
-    If supplied, quality receives diagnostics for every entity, including days with no accepted price."""
+    If supplied, quality receives diagnostics for every entity, including days with no accepted price.
+    attestations replaces harness/sign_attestations.json (tests and the parity corpus use their own marks)."""
     if not cleaned:
         rows = clean(rows, day)
     baskets = basket_legs(rows)
@@ -370,22 +436,26 @@ def parse_day(rows, day, prev, cleaned=False, quality=None):
                 reasons.add('unsupported_coupon')
             else:
                 reasons.add('missing_price')
-        implied, n_amb = [], 0
+        implied, n_amb, n_att = [], 0, 0
         for hi, lo, p, ex, meta in ups:
             candidates.extend(x['spread'] for x in (hi, lo) if x['error'] is None)
             s, by = resolve_upfront(hi, lo)
-            if s is None:
-                if by == 'ambiguous':
+            mark = None
+            if s is None and by == 'ambiguous':
+                s, why, mark = attested_side(eid, day, meta['coupon'], hi['spread'], lo['spread'], attestations)
+                if s is None:
                     n_amb += 1
-                    reasons.add('ambiguous_upfront_sign')
-                else:
-                    n_domain += 1
-                    reasons.update(x['error'] for x in (hi, lo) if x['error'] not in (None, 'no_nonnegative_hazard_root'))
-                    reasons.add('model_domain_error')
+                    reasons.update(('ambiguous_upfront_sign', why))
+                    continue
+                by, n_att = why, n_att + 1
+            elif s is None:
+                n_domain += 1
+                reasons.update(x['error'] for x in (hi, lo) if x['error'] not in (None, 'no_nonnegative_hazard_root'))
+                reasons.add('model_domain_error')
                 continue
-            implied.append((s, ex, dict(meta, sign_by=by)))
+            implied.append((s, ex, dict(meta, sign_by=by, sign_mark_date=mark or '')))
         diagnostic = {'accepted_trades': len(quoted) + len(implied), 'ambiguous': n_amb, 'model_domain_errors': n_domain,
-                      'invalid_quotes': n_invalid, 'basket_legs': n_basket,
+                      'invalid_quotes': n_invalid, 'basket_legs': n_basket, 'sign_attested': n_att,
                       'candidate_interval_bp': {'low': round(min(candidates) * 10000, 1), 'high': round(max(candidates) * 10000, 1)} if candidates else None,
                       'reasons': sorted(reasons)}
         if not diagnostic['accepted_trades']:
@@ -408,7 +478,7 @@ def parse_day(rows, day, prev, cleaned=False, quality=None):
                        'last_trade': dt.datetime.fromtimestamp(last, dt.timezone.utc).isoformat(),
                        'n_capped': sum(1 for x in official if x[2]['notional_capped']),
                        'n_percent_coupon_normalised': sum(1 for x in quoted + implied if x[2]['coupon_normalised']),
-                       'n_ambiguous': n_amb, 'n_sign_from_reference': 0, 'n_basket_legs': n_basket,
+                       'n_ambiguous': n_amb, 'n_sign_from_reference': 0, 'n_sign_attested': n_att, 'n_basket_legs': n_basket,
                        'n_model_domain_errors': n_domain, 'n_invalid_quotes': n_invalid}
         for s, ex, meta in official:
             trades.append({'date': day, 'entity': eid, 'spread_bp': round(s * 10000, 2), **meta})
@@ -562,7 +632,9 @@ def main():
                       'bounded_history': True, 'point_in_time_verified': False, 'settlement_eligible': False}
     quality_path = canon / 'cds_source_quality.json'
     quality_doc = {'decoder_version': DECODER_VERSION, 'research_only': True,
-                   'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source_quality': source_quality}
+                   'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source_quality': source_quality,
+                   'sign_attestations': {'path': 'harness/sign_attestations.json', 'marks': len(SIGN_ATTESTATIONS['marks']),
+                                         'sha256': hashlib.sha256(SIGN_ATTESTATIONS_PATH.read_bytes()).hexdigest()}}
     quality_path.write_text(json.dumps(quality_doc, indent=2, sort_keys=True) + '\n')
     if status in ('invalid', 'unavailable'):
         raise SystemExit('DTCC source ' + status + ': canonical price files preserved; see cds_source_quality.json')

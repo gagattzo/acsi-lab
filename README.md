@@ -18,6 +18,11 @@ quality states. [Release details and acceptance gates](docs/reliability-release-
 `dtcc-strict-v2` adds one quote-quality rule: a reported quote under 10 bp is a reporting error and is rejected, with no
 ceiling. It applies to reported quotes only and never rules out an upfront's low-spread root
 ([evidence](research/findings/2026-11-28-decoder-choices-evidence.md)).
+`dtcc-attested-v3` decides the side of the coupon for an upfront with two feasible readings from the name's latest dated
+public CDS mark (`harness/sign_attestations.json`, maintained by hand; today only CoreWeave), and the website withholds
+its headline only for source problems that can reach the CDS levels it uses. Against nine dated public CoreWeave marks
+the decided reading was always on the right side; a rating-based rule failed on investment-grade names
+([evidence](research/findings/2026-11-28-coreweave-public-marks.md), manual version 1.3).
 The historical levels and scorecard below were produced before this decoder and are retained as an audit record;
 they are **not validation of the current decoder**. Current readings can be unavailable when these checks fail.
 Published weekly editions are unchanged. Research calculations do not authorize institutional reliance or perp settlement.

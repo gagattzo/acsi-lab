@@ -59,6 +59,19 @@ def low_root_amount(day):
     raise RuntimeError('no low-root amount found')
 
 
+def attestations():
+    """Synthetic public marks for the corpus (the real ones live in harness/sign_attestations.json and change often)."""
+    doc = {k: v for k, v in dtcc.SIGN_ATTESTATIONS.items() if k != 'marks'}
+    doc['marks'] = [{'entity': e, 'date': d, 'reported_bp': bp, 'reported_by': why, 'url': 'https://example.org/synthetic'}
+                    for e, d, bp, why in [
+                        ('CRWV', '2026-11-20', 1200.0, 'wide: keeps the high reading from 20 Nov'),
+                        ('CRWV', '2026-11-26', 300.0, 'tight: keeps the low reading from 26 Nov, never earlier'),
+                        ('ORCL', '2026-10-01', 300.0, 'decisive but over 21 days old on every corpus day'),
+                        ('ORCL', '2026-11-24', 120.0, 'too near the 1% coupon to decide'),
+                    ]]
+    return dtcc.validate_attestations(doc)
+
+
 def corpus():
     SCENARIOS.clear()
     A, B, C, D, E = DAYS
@@ -76,11 +89,11 @@ def corpus():
             rec('A08', 'ORCL', A, '16:10:00', scenario='zero quote is the no-quote sentinel', **dict(q('0'), **up('1080000'))),
             rec('A09', 'ORCL', A, '16:20:00', scenario='quote with unresolved units', **q('2')),
             rec('A10', 'ORCL', A, '16:30:00', scenario='quote under 10 bp', **q('.00045')),
-            rec('A11', 'CRWV', A, scenario='two feasible upfront roots', **up('2309720')),
+            rec('A11', 'CRWV', A, scenario='two feasible roots: a recent wide mark keeps the high reading', **up('2309720')),
             rec('A12', 'CRWV', A, '15:10:00', scenario='upfront outside the model domain', **up('7000000')),
             rec('A13', 'CRWV', A, '15:20:00', scenario='quote under 10 bp', **q('.000125')),
             rec('A14', 'META', A, scenario='quoted decimal', **q('0.0115')),
-            rec('A15', 'META', A, '15:10:00', scenario='two feasible upfront roots', **up('120000')),
+            rec('A15', 'META', A, '15:10:00', scenario='two feasible roots and no mark stay ambiguous', **up('120000')),
             rec('A16', 'ORCL', A, '17:00:00', scenario='ineligible: odd lot', **dict(q('0.0500'), **{'Notional amount-Leg 1': '500,000'})),
             rec('A17', 'ORCL', A, '17:10:00', scenario='ineligible: not USD', **dict(q('0.0500'), **{'Notional currency-Leg 1': 'EUR'})),
             rec('A18', 'ORCL', A, '17:20:00', scenario='ineligible: novation', **dict(q('0.0500'), **{'Event type': 'NOVA'})),
@@ -91,14 +104,17 @@ def corpus():
             rec('A23', 'ORCL', A, '18:10:00', scenario='basket legs across names', **up('197460')),
             rec('A24', 'META', A, '18:11:00', scenario='basket legs across names', **up('197460')),
             rec('A25', 'CRWV', A, '18:20:00', scenario='quote with no ceiling', **q('0.45')),
+            rec('A26', 'CRWV', A, '16:40:00', scenario='readings under 2x apart stay ambiguous despite a wide mark', **up('200000')),
+            rec('A27', 'ORCL', A, '16:50:00', scenario='a mark over 21 days old decides nothing', **up('210000')),
         ],
         B: [
             rec('B01', 'ORCL', B, scenario='correction in a later file', **q('0.0365')),
             rec('B02', 'ORCL', B, '15:10:00', scenario='cancellation in a later file', **q('0.0360')),
-            rec('B03', 'CRWV', B, scenario='upfront low root under 10 bp stays ambiguous', **up(low_root_amount(B))),
+            rec('B03', 'CRWV', B, scenario='low root under 10 bp: a recent wide mark keeps the high reading', **up(low_root_amount(B))),
             rec('B04', 'ORCL', B, '15:30:00', scenario='ambiguous correction order', **q('0.0361')),
             rec('B05', 'ORCL', B, '15:40:00', scenario='conflicting versions of one identifier', **q('0.0362')),
             rec('B06', 'META', B, scenario='quoted decimal', **q('0.0120')),
+            rec('B07', 'ORCL', B, '16:00:00', scenario='a mark near the coupon decides nothing', **up('220000')),
         ],
         C: [
             rec('C01', 'ORCL', B, '15:00:05', scenario='correction in a later file',
@@ -120,21 +136,32 @@ def corpus():
                 **dict(q('0.0372'), **{'Action type': 'CORR', 'Original Dissemination Identifier': 'C08'})),
             rec('C10', 'ORCL', C, '15:40:00', scenario='unknown action', **dict(q('0.0372'), **{'Action type': 'XXXX'})),
             rec('C11', 'ORCL', C, '16:00:00', scenario='quoted decimal', **q('0.0373')),
-            rec('C12', 'CRWV', C, scenario='two feasible upfront roots', **up('2300000')),
+            rec('C12', 'CRWV', C, scenario='a later mark never decides an earlier trade', **up('2300000')),
             rec('C13', 'META', C, scenario='quoted decimal', **q('0.0124')),
             rec('B05', 'ORCL', B, '15:40:00', scenario='conflicting versions of one identifier', **q('0.0390')),
+            rec('C14', 'CRWV', '2026-10-15', scenario='quarantine executed before the input window',
+                **{'Action type': 'TERM', 'Original Dissemination Identifier': 'Z97', 'Event timestamp': f'{C}T11:00:00Z'}),
+            rec('C15', 'META', C, '16:10:00', scenario='quarantined lineage with an unidentified version',
+                **dict(q('0.0125'), **{'Action type': 'CORR', 'Original Dissemination Identifier': 'Z96'})),
+            rec('C16', 'META', C, '16:10:00', scenario='quarantined lineage with an unidentified version',
+                **dict(q('0.0126'), **{'Action type': 'CORR', 'Original Dissemination Identifier': 'C15',
+                                       'Underlying Asset Name': '', 'Underlier ID-Leg 1': ''})),
+            rec('C17', 'CRWV', C, '16:20:00', scenario='quarantined record with an unreadable execution date',
+                **dict(up('2300000'), **{'Action type': 'XXXX', 'Execution Timestamp': 'not-a-date'})),
         ],
         D: [
             rec('D01', 'ORCL', D, scenario='quoted decimal', **q('0.0374')),
+            rec('D02', 'CRWV', D, scenario='a tight mark keeps the low reading from its own date', **up('2300000')),
         ],
         E: [
             rec('E01', 'ORCL', '2026-11-28', scenario='weekend execution is not a trading day', **q('0.0375')),
             rec('E02', 'ORCL', E, scenario='quoted raw bp', **q('376')),
+            rec('E03', 'CRWV', E, scenario='a tight mark keeps the low reading from its own date', **up('2300000')),
         ],
     }
     return {'schema': 'acsi-dtcc-parity-corpus-v1',
             'description': 'Synthetic DTCC SEC credit records exercising every decoding rule; no market data.',
-            'columns': list(REQUIRED_COLUMNS),
+            'columns': list(REQUIRED_COLUMNS), 'attestations': attestations(),
             'scenarios': {k: sorted(set(v)) for k, v in sorted(SCENARIOS.items())},
             'files': [{'date': d, 'rows': rows} for d, rows in sorted(files.items())]}
 
@@ -146,16 +173,17 @@ def decode(doc):
     days, prev = {}, {}
     for d in sorted(x for x in by_day if x >= first):
         quality = {}
-        levels, _ = dtcc.parse_day(by_day[d], d, prev, cleaned=True, quality=quality)
+        levels, _ = dtcc.parse_day(by_day[d], d, prev, cleaned=True, quality=quality, attestations=doc['attestations'])
         for e, v in levels.items():
             prev[e] = v['official_bp']
-        days[d] = {e: {'level': ({k: levels[e][k] for k in ('official_bp', 'official_kind', 'official_trades', 'quoted_trades')}
+        days[d] = {e: {'level': ({k: levels[e][k] for k in ('official_bp', 'official_kind', 'official_trades', 'quoted_trades',
+                                                           'n_sign_attested')}
                                  if e in levels else None),
                        'quality': quality.get(e)} for e in ('ORCL', 'CRWV', 'META')}
     q = by_day.quality
     return {'schema': 'acsi-dtcc-parity-expected-v1', 'decoder_version': dtcc.DECODER_VERSION,
             'ledger_quality': {k: q[k] for k in ('status', 'issue_counts', 'quarantined_lineages', 'orphan_lineages',
-                                                 'cancelled_lineages', 'effective_trades')},
+                                                 'cancelled_lineages', 'effective_trades', 'input_impact')},
             'days': days}
 
 

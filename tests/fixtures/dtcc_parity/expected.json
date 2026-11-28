@@ -3,13 +3,14 @@
   "2026-11-23": {
    "CRWV": {
     "level": {
-     "official_bp": 4500.0,
-     "official_kind": "quoted",
-     "official_trades": 1,
+     "n_sign_attested": 1,
+     "official_bp": 2935.8,
+     "official_kind": "mixed",
+     "official_trades": 2,
      "quoted_trades": 1
     },
     "quality": {
-     "accepted_trades": 1,
+     "accepted_trades": 2,
      "ambiguous": 1,
      "basket_legs": 0,
      "candidate_interval_bp": {
@@ -22,12 +23,15 @@
       "ambiguous_upfront_sign",
       "model_domain_error",
       "outside_model_domain",
-      "quote_below_10bp"
-     ]
+      "quote_below_10bp",
+      "readings_near_coupon"
+     ],
+     "sign_attested": 1
     }
    },
    "META": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 115.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -45,12 +49,15 @@
      "model_domain_errors": 0,
      "reasons": [
       "ambiguous_upfront_sign",
+      "no_public_mark",
       "suspected_basket_leg"
-     ]
+     ],
+     "sign_attested": 0
     }
    },
    "ORCL": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 381.0,
      "official_kind": "mixed",
      "official_trades": 6,
@@ -58,29 +65,38 @@
     },
     "quality": {
      "accepted_trades": 6,
-     "ambiguous": 0,
+     "ambiguous": 1,
      "basket_legs": 1,
      "candidate_interval_bp": {
       "high": 385.3,
-      "low": 379.6
+      "low": 57.0
      },
      "invalid_quotes": 2,
      "model_domain_errors": 0,
      "reasons": [
+      "ambiguous_upfront_sign",
       "invalid_or_unresolved_quote_units",
       "missing_price",
+      "public_mark_stale",
       "quote_below_10bp",
       "suspected_basket_leg"
-     ]
+     ],
+     "sign_attested": 0
     }
    }
   },
   "2026-11-24": {
    "CRWV": {
-    "level": null,
+    "level": {
+     "n_sign_attested": 1,
+     "official_bp": 1378.7,
+     "official_kind": "upfront_implied",
+     "official_trades": 1,
+     "quoted_trades": 0
+    },
     "quality": {
-     "accepted_trades": 0,
-     "ambiguous": 1,
+     "accepted_trades": 1,
+     "ambiguous": 0,
      "basket_legs": 0,
      "candidate_interval_bp": {
       "high": 1378.7,
@@ -88,14 +104,13 @@
      },
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": [
-      "ambiguous_upfront_sign",
-      "no_accepted_price"
-     ]
+     "reasons": [],
+     "sign_attested": 1
     }
    },
    "META": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 120.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -108,11 +123,13 @@
      "candidate_interval_bp": null,
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [],
+     "sign_attested": 0
     }
    },
    "ORCL": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 366.0,
      "official_kind": "quoted",
      "official_trades": 2,
@@ -120,21 +137,34 @@
     },
     "quality": {
      "accepted_trades": 2,
-     "ambiguous": 0,
+     "ambiguous": 1,
      "basket_legs": 0,
-     "candidate_interval_bp": null,
+     "candidate_interval_bp": {
+      "high": 155.6,
+      "low": 54.9
+     },
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [
+      "ambiguous_upfront_sign",
+      "public_mark_near_coupon"
+     ],
+     "sign_attested": 0
     }
    }
   },
   "2026-11-25": {
    "CRWV": {
-    "level": null,
+    "level": {
+     "n_sign_attested": 1,
+     "official_bp": 1368.7,
+     "official_kind": "upfront_implied",
+     "official_trades": 1,
+     "quoted_trades": 0
+    },
     "quality": {
-     "accepted_trades": 0,
-     "ambiguous": 1,
+     "accepted_trades": 1,
+     "ambiguous": 0,
      "basket_legs": 0,
      "candidate_interval_bp": {
       "high": 1368.7,
@@ -142,14 +172,13 @@
      },
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": [
-      "ambiguous_upfront_sign",
-      "no_accepted_price"
-     ]
+     "reasons": [],
+     "sign_attested": 1
     }
    },
    "META": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 124.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -162,11 +191,13 @@
      "candidate_interval_bp": null,
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [],
+     "sign_attested": 0
     }
    },
    "ORCL": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 373.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -179,23 +210,32 @@
      "candidate_interval_bp": null,
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [],
+     "sign_attested": 0
     }
    }
   },
   "2026-11-26": {
    "CRWV": {
-    "level": null,
+    "level": {
+     "n_sign_attested": 1,
+     "official_bp": 14.0,
+     "official_kind": "upfront_implied",
+     "official_trades": 1,
+     "quoted_trades": 0
+    },
     "quality": {
-     "accepted_trades": 0,
+     "accepted_trades": 1,
      "ambiguous": 0,
      "basket_legs": 0,
-     "candidate_interval_bp": null,
+     "candidate_interval_bp": {
+      "high": 1369.7,
+      "low": 14.0
+     },
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": [
-      "no_accepted_price"
-     ]
+     "reasons": [],
+     "sign_attested": 1
     }
    },
    "META": {
@@ -209,11 +249,13 @@
      "model_domain_errors": 0,
      "reasons": [
       "no_accepted_price"
-     ]
+     ],
+     "sign_attested": 0
     }
    },
    "ORCL": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 374.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -226,23 +268,32 @@
      "candidate_interval_bp": null,
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [],
+     "sign_attested": 0
     }
    }
   },
   "2026-11-30": {
    "CRWV": {
-    "level": null,
+    "level": {
+     "n_sign_attested": 1,
+     "official_bp": 14.3,
+     "official_kind": "upfront_implied",
+     "official_trades": 1,
+     "quoted_trades": 0
+    },
     "quality": {
-     "accepted_trades": 0,
+     "accepted_trades": 1,
      "ambiguous": 0,
      "basket_legs": 0,
-     "candidate_interval_bp": null,
+     "candidate_interval_bp": {
+      "high": 1373.8,
+      "low": 14.3
+     },
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": [
-      "no_accepted_price"
-     ]
+     "reasons": [],
+     "sign_attested": 1
     }
    },
    "META": {
@@ -256,11 +307,13 @@
      "model_domain_errors": 0,
      "reasons": [
       "no_accepted_price"
-     ]
+     ],
+     "sign_attested": 0
     }
    },
    "ORCL": {
     "level": {
+     "n_sign_attested": 0,
      "official_bp": 376.0,
      "official_kind": "quoted",
      "official_trades": 1,
@@ -273,24 +326,43 @@
      "candidate_interval_bp": null,
      "invalid_quotes": 0,
      "model_domain_errors": 0,
-     "reasons": []
+     "reasons": [],
+     "sign_attested": 0
     }
    }
   }
  },
- "decoder_version": "dtcc-strict-v2",
+ "decoder_version": "dtcc-attested-v3",
  "ledger_quality": {
   "cancelled_lineages": 1,
-  "effective_trades": 35,
+  "effective_trades": 40,
+  "input_impact": {
+   "CRWV": {
+    "invalid_execution_dates": 1,
+    "latest_execution_date": "2026-10-15"
+   },
+   "META": {
+    "invalid_execution_dates": 0,
+    "latest_execution_date": "2026-11-25"
+   },
+   "ORCL": {
+    "invalid_execution_dates": 0,
+    "latest_execution_date": "2026-11-25"
+   },
+   "UNIDENTIFIED": {
+    "invalid_execution_dates": 0,
+    "latest_execution_date": "2026-11-25"
+   }
+  },
   "issue_counts": {
    "ambiguous_correction_order": 1,
    "conflicting_identifier": 1,
    "cyclic_lineage": 1,
-   "orphan_lineage": 3,
-   "unknown_action": 1
+   "orphan_lineage": 5,
+   "unknown_action": 2
   },
-  "orphan_lineages": 3,
-  "quarantined_lineages": 5,
+  "orphan_lineages": 5,
+  "quarantined_lineages": 7,
   "status": "partial"
  },
  "schema": "acsi-dtcc-parity-expected-v1"
