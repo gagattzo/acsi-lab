@@ -3,3 +3,7 @@ __pycache__/
 proposed/
 *.pyc
 .pytest_cache/
+
+private_data/
+*.pem
+!config/archive_public.pem
