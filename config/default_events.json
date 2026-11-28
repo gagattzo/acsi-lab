@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "policy": "Manual declared-event registry; no automated default monitoring. Research only. A declared event blocks basket levels pending an approved recovery fixing policy.",
+  "events": []
+}
