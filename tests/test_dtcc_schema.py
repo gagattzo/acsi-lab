@@ -30,8 +30,11 @@ def errors():
     return [error for schema in SCHEMAS for error in validate.check(schema)]
 
 
-@pytest.mark.parametrize('quote,expected_bp', [('.0001', 1), ('.0000001', 0), ('20000', 20000)])
-def test_schema_accepts_finite_low_rounded_zero_and_high_quotes(tmp_path, monkeypatch, quote, expected_bp):
+# Reported quotes under 10 bp are rejected when decoded (quote-quality rule, test_dtcc_pricing_quality.py); the
+# schema accepts the 10 bp boundary and has no ceiling. Upfront-implied levels keep a 0 bp minimum: the quote rule
+# never applies to an upfront's roots.
+@pytest.mark.parametrize('quote,expected_bp', [('.001', 10), ('10', 10), ('20000', 20000)])
+def test_schema_accepts_the_10bp_quote_boundary_and_high_quotes(tmp_path, monkeypatch, quote, expected_bp):
     monkeypatch.setattr(validate, 'ROOT', tmp_path)
     daily, trades = accepted_quote(quote)
     assert daily[0]['official_bp'] == expected_bp

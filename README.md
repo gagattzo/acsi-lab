@@ -15,6 +15,9 @@ Two anchored stress scores. Debt stress comes from CoreWeave credit, Oracle 5-ye
 **Strict-decoder release, 28 November 2026:** `dtcc-strict-v1` excludes ambiguous unsigned upfronts instead of guessing
 their sign from a coupon floor, a nearby quote or the previous level. Source and lifecycle failures have explicit
 quality states. [Release details and acceptance gates](docs/reliability-release-2026-11-28.md).
+`dtcc-strict-v2` adds one quote-quality rule: a reported quote under 10 bp is a reporting error and is rejected, with no
+ceiling. It applies to reported quotes only and never rules out an upfront's low-spread root
+([evidence](research/findings/2026-11-28-decoder-choices-evidence.md)).
 The historical levels and scorecard below were produced before this decoder and are retained as an audit record;
 they are **not validation of the current decoder**. Current readings can be unavailable when these checks fail.
 Published weekly editions are unchanged. Research calculations do not authorize institutional reliance or perp settlement.

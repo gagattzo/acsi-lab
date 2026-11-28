@@ -56,6 +56,7 @@ python harness/score.py methods/v0.1-live.yaml     # score a method
 | Coupons written in percent (1 = 1%) drop the trade | fixed 26 Nov 2026 (issue #7): 48 Oracle and 9 Meta trades recovered | `test_percent_coupon_is_normalised` |
 | Unwind payments (UWIN) read as upfronts | fixed 26 Nov 2026: 26 Oracle trades removed | `test_unwind_payment_is_not_an_upfront` |
 | Quoted spreads sometimes in raw bp (365, not 0.0365) | handled; 1 Meta record in a year | `test_quoted_spread_in_raw_bp_is_read_as_bp` |
+| Reported quotes under 10 bp (34 in a year, all 0.81–9.0 bp on high-yield names, CoreWeave at 1.2 bp among them) | rejected as reporting errors since `dtcc-strict-v2`; no ceiling; never applied to an upfront's roots | `test_quote_under_10bp_is_a_reporting_error_with_no_ceiling`, `test_quote_floor_never_rules_out_an_upfront_low_root` |
 | A failed download cached as an empty file, never retried | fixed 26 Nov 2026: only valid ZIPs are written | `test_failed_download_writes_nothing_and_is_retried` |
 | A republished raw file stops the run | now a logged conflict: original kept, day left out | `test_republished_file_is_a_logged_conflict` |
 | Capped notionals (`5,000,000+`) | Flagged per day (`n_capped`); code divides the reported upfront by the displayed notional. Historical capped/uncapped comparisons do not prove that this ratio has the correct semantics for every record | `test_capped_notional_is_counted` |

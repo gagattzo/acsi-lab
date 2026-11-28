@@ -80,12 +80,35 @@ def test_outside_domain_day_is_counted_even_without_a_level():
     assert 'outside_model_domain' in quality['CRWV']['reasons']
 
 
-def test_quote_validation_has_no_empirical_floor_and_rejects_unresolved_units():
-    assert dtcc.quoted_spread('.0001') == .0001
-    assert dtcc.quoted_spread('365') == .0365
+def test_quote_under_10bp_is_a_reporting_error_with_no_ceiling():
+    # research/findings/2026-11-28-decoder-choices-evidence.md: in a year, 34 eligible quotes fell under 10 bp, all
+    # 0.81-9.0 bp on high-yield names (CoreWeave printed at 1.2 bp and 4.5 bp). None was above 5,000 bp.
+    assert dtcc.quote_status('.0001') == (None, 'quote_below_10bp')
+    assert dtcc.quoted_spread('.001') == .001 and dtcc.quoted_spread('10') == .001        # 10 bp itself is kept
+    assert dtcc.quoted_spread('365') == .0365 and dtcc.quoted_spread('.45') == .45
+    assert dtcc.quoted_spread('60000') == 6.0                                                 # no ceiling
+    levels, _, quality = classify([row(**{'Spread-Leg 1': '.00045'})])
+    assert levels == {} and quality['ORCL']['invalid_quotes'] == 1 and 'quote_below_10bp' in quality['ORCL']['reasons']
     for value in ['2', 'NaN', 'Infinity', '-1']:
         levels, _, quality = classify([row(**{'Spread-Leg 1': value, 'Other payment amount': '1030000'})])
         assert levels == {} and quality['ORCL']['invalid_quotes'] == 1
+        assert 'invalid_or_unresolved_quote_units' in quality['ORCL']['reasons']
+
+
+def test_quote_floor_never_rules_out_an_upfront_low_root():
+    # The 10 bp rule judges reported quotes only. An unsigned upfront whose low root sits under 10 bp keeps both roots
+    # and stays ambiguous, with or without a rejected quote that day.
+    ex, exp = dtcc.ts(f'{DAY}T15:00:00Z'), dtcc.ts('2031-12-20T00:00:00Z')
+    step = ex + dtcc.DAY
+    T, accr = (exp - step) / (365.25 * dtcc.DAY), (step - dtcc.last_imm(ex)) / (360 * dtcc.DAY)
+    amount = next(a for a in range(2_200_000, 2_500_000, 500)
+                  if 0 < (dtcc.upfront_solution(-a / 1e7, .05, T, accr)['spread'] or 0) < dtcc.QUOTE_FLOOR)
+    up = row(**dict(CRWV, **{'Dissemination Identifier': '2', 'Other payment amount': str(amount)}))
+    junk = row(**dict(CRWV, **{'Dissemination Identifier': '3', 'Spread-Leg 1': '.00045'}))
+    for rows in ([up], [up, junk]):
+        levels, _, quality = classify(rows)
+        assert 'CRWV' not in levels and quality['CRWV']['ambiguous'] == 1
+        assert quality['CRWV']['candidate_interval_bp']['low'] < 10
 
 
 @pytest.mark.parametrize('change', [{'Expiration Date': '2030-12-20'}, {'Fixed rate-Leg 1': '.03'}, {'Underlier ID-Leg 1': 'LX123456'}])

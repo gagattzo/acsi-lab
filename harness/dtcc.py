@@ -80,17 +80,34 @@ def coupon(v):
     return (c if c <= 0.10 else None), norm
 
 
-def quoted_spread(v):
-    """Decode the observed decimal/raw-bp conventions, without an empirical spread floor.
-    Values in [0.5, 5) have unresolved units and are rejected, rather than guessed."""
+QUOTE_FLOOR = 0.001  # 10 bp: a quality rule for reported quotes only, never a sign rule for upfronts
+
+
+def quote_status(v):
+    """(spread, reason) for a reported quote.
+
+    Units: decimals below 0.5, raw bp from 5; [0.5, 5) is unresolved and rejected rather than guessed.
+    Quality: a reported quote under 10 bp is a reporting error. In a year of the tape, 34 eligible on-the-run quotes
+    fell under 10 bp, all 0.81-9.0 bp on high-yield or distressed names
+    (research/findings/2026-11-28-decoder-choices-evidence.md). There is no ceiling.
+    This judges reported quotes only. It never rules out the low-spread root of an unsigned upfront.
+    """
     q = fnum(v)
     if not q or q <= 0:
-        return None
+        return None, 'invalid_or_unresolved_quote_units'
     if q >= 5:
         q = q / 10000  # raw basis points
     elif q >= 0.5:
-        return None
-    return q if math.isfinite(q) and q > 0 else None
+        return None, 'invalid_or_unresolved_quote_units'
+    if not (math.isfinite(q) and q > 0):
+        return None, 'invalid_or_unresolved_quote_units'
+    if q < QUOTE_FLOOR:
+        return None, 'quote_below_10bp'
+    return q, None
+
+
+def quoted_spread(v):
+    return quote_status(v)[0]
 
 
 def ts(s):
@@ -334,7 +351,7 @@ def parse_day(rows, day, prev, cleaned=False, quality=None):
             pct = amt / N if (ufro and N and N > 0 and amt is not None) else None
             meta = {'dissemination_id': r.get('Dissemination Identifier', ''), 'exec_ts': r.get('Execution Timestamp', ''),
                     'coupon': standard_coupon(C) or C, 'coupon_normalised': norm, 'notional_capped': '+' in str(r.get('Notional amount-Leg 1', ''))}
-            q = quoted_spread(r.get('Spread-Leg 1'))
+            q, q_reason = quote_status(r.get('Spread-Leg 1'))
             raw_quote = str(r.get('Spread-Leg 1') or '').strip()
             # Zero is the source's no-quote sentinel, not a priced observation.
             if raw_quote and fnum(raw_quote) != 0:
@@ -342,7 +359,7 @@ def parse_day(rows, day, prev, cleaned=False, quality=None):
                     quoted.append((q, ex, dict(meta, kind='quoted', upfront_pct=None if pct is None else round(abs(pct) * 100, 4))))
                 else:
                     n_invalid += 1
-                    reasons.add('invalid_or_unresolved_quote_units')
+                    reasons.add(q_reason)
             elif pct is not None and standard_coupon(C):
                 C = standard_coupon(C)
                 ups.append((upfront_solution(abs(pct), C, T, accr), upfront_solution(-abs(pct), C, T, accr), abs(pct), ex,
@@ -543,7 +560,7 @@ def main():
                       'conflict_dates': [c['date'] for c in conflicts], 'lifecycle': by_day.quality,
                       'bounded_history': True, 'point_in_time_verified': False, 'settlement_eligible': False}
     quality_path = canon / 'cds_source_quality.json'
-    quality_doc = {'decoder_version': 'dtcc-strict-v1', 'research_only': True,
+    quality_doc = {'decoder_version': 'dtcc-strict-v2', 'research_only': True,
                    'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source_quality': source_quality}
     quality_path.write_text(json.dumps(quality_doc, indent=2, sort_keys=True) + '\n')
     if status in ('invalid', 'unavailable'):
