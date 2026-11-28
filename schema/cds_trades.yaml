@@ -14,3 +14,4 @@ columns:
   - {name: coupon_normalised, type: bool, description: "The coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
   - {name: upfront_pct, type: float, nullable: true, unit: percent of notional, description: "Upfront payment (UFRO only), unsigned, as % of notional"}
   - {name: notional_capped, type: bool, description: "Notional shows the reporting cap (+); true size is larger"}
+  - {name: sign_by, type: enum, nullable: true, values: [trade, reference, large_upfront], description: "How an upfront trade's unsigned payment was read: trade (the other reading is impossible for the coupon), reference (nearer the day's eligible quotes or the previous level), large_upfront (no reference; 2% or more read as wider than the coupon). Blank for quoted trades"}

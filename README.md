@@ -22,16 +22,25 @@ has no quoted 5-year spread on the tape, so it is computed from upfront payments
 24 Nov 2026 edition** and count only from that date. That makes the year of history the financing side (F1 and F2)
 alone. It is not yet a live debt-versus-GPU measure.
 
-v0.1 scored on 262 trading days (24 Oct 2025 to 25 Nov 2026), daily changes (v0.2 in brackets):
+v0.1 scored on 260 trading days (27 Oct 2025 to 25 Nov 2026), daily changes (v0.2 in brackets), on the tape as cleaned
+on 28 Nov 2026 (`research/findings/2026-11-28-cds-contract-checks.md`):
 
 | Test | Baseline | Read |
 | --- | --- | --- |
-| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.017 / 0.038 / 0.014 / 0.038 (0.055 / 0.072 / 0.048 / 0.078) | Broad markets explain under 8% of daily moves. Weekly R² on the Nasdaq runs 0.5% to 29% depending on the start day, and short spells of co-movement beat chance; no lock-in on selloff days. See `research/findings/2026-11-28-nasdaq-regimes.md` |
-| Most a single trade moved it | 21.2 points, p95 6.8 (21.2, p95 7.0) | Far too much: on a quiet day one CoreWeave print sets the level alone |
-| Days resting on an input with fewer than 3 trades | 77% | The main weakness |
-| Days a level is set by a single trade | 32% | |
-| Weekdays with a same-day CoreWeave CDS trade | 63% | Oracle: 97% |
+| R² on the Nasdaq / high-yield spreads / VIX / all three | 0.033 / 0.041 / 0.020 / 0.045 (0.090 / 0.085 / 0.067 / 0.105) | Broad markets explain about 5% (v0.2: 11%) of daily moves, more in the second half (v0.2: 17%). Weekly R² on the Nasdaq runs 3% to 18% (v0.2: 7% to 24%) depending on the start day; short spells of co-movement beat chance; no lock-in on selloff days. See `research/findings/2026-11-28-nasdaq-regimes.md` |
+| Most a single trade moved it | 18.5 points, p95 6.6 (18.5, p95 7.0) | Far too much: on a quiet day one CoreWeave print sets the level alone |
+| Days resting on an input with fewer than 3 trades | 82% | The main weakness |
+| Days a level is set by a single trade | 38% | |
+| Weekdays with a same-day CoreWeave CDS trade | 61% | Oracle: 97% |
 | Inputs from sources we may not redistribute | 3 of 5 | Loans (press), H100 and Blackwell rents (Silicon Data) |
+
+On 28 Nov 2026 the tape got contract checks (`research/findings/2026-11-28-cds-contract-checks.md`): only USD, senior,
+$1M-plus trades price, never novations, packages, basket legs or post-priced trades; cancellations and corrections
+apply across files; an upfront's sign is read from the trade alone whenever the other reading is impossible for its
+coupon. 10% of records turned out not to be prices, 66 were basket legs, and 99 trades behind past levels had been
+cancelled. The tape got thinner and the
+scorecard above moved with it; the levels behind the live headline did not change. The site runs the same rules,
+checked level for level against this harness.
 
 The one-trade figure was 5.41 until 26 Nov 2026. It measured only trades removed within a day, so it scored a day
 resting on one trade as 0, and a constant loan value painted across the year diluted the rest by a third. Both are

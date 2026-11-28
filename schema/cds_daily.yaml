@@ -17,3 +17,6 @@ columns:
   - {name: last_trade, type: datetime}
   - {name: n_capped, type: int, min: 0, description: "Trades whose notional shows the reporting cap (+); their upfront % is computed on the cap, and a check found no bias (median 0.5 bp)"}
   - {name: n_percent_coupon_normalised, type: int, min: 0, description: "Trades whose coupon was written in percent (1 = 1%) and divided by 100 (issue #7)"}
+  - {name: n_ambiguous, type: int, min: 0, description: "Upfront trades dropped because neither reading is plausible for the coupon, or both are and nothing tells them apart"}
+  - {name: n_sign_from_reference, type: int, min: 0, description: "Upfront trades whose sign was set by the reference (eligible quotes, else the previous level) because both readings were plausible for the coupon; 0 means every price that day was read from its trade alone"}
+  - {name: n_basket_legs, type: int, min: 0, description: "Eligible trades left out as legs of a basket: same upfront, to a millionth of notional, as a trade on another of our names within 120 seconds"}

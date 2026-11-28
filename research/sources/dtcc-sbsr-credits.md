@@ -19,15 +19,17 @@ Counts are from the 24 Nov 2026 end-of-day file: 1,225 records, 110 columns.
 | Dissemination Identifier | Id of this record | integer | none seen | yes, to apply corrections |
 | Original Dissemination Identifier | For corrections, cancellations and lifecycle events, the record it refers to | integer | blank on new trades | yes |
 | Action type | NEWT new, MODI modified, CORR corrected, TERM terminated, EROR cancelled | code | NEWT 776, MODI 219, CORR 109, TERM 84, EROR 36 | yes: NEWT and CORR kept, EROR removes |
-| Event type | TRAD trade, NOVA novation, ETRM early termination, CLRG clearing | code | blank on 146 | not yet |
-| Execution Timestamp | When the trade was done | ISO 8601, UTC | corrections can carry an earlier date | yes: same-day trades only |
+| Event type | TRAD trade, NOVA novation, ETRM early termination, CLRG clearing | code | blank on 146 (older files leave it blank) | yes: NOVA and other non-trade events price nothing; blank counts as a trade |
+| Execution Timestamp | When the trade was done | ISO 8601, UTC | corrections and late reports carry an earlier date | yes: a trade is priced on its execution day, whichever file reports it (weekdays only) |
 | Expiration Date | Maturity | YYYY-MM-DD | | yes: on-the-run 5Y only (20 Jun / 20 Dec, five years out) |
 | Underlying Asset Name, UPI Underlier Name | Reference entity | text | spelling varies | yes, matched with the RED code |
 | Underlier ID-Leg 1 | RED code, ISIN or loan id | text; `LX…` = loans | can hold two ids joined with `;` | yes |
-| UPI FISN | Product | e.g. `NA/CDS Corp SN Sr`, `NA/CDS Corp Basket` | | not yet; could replace name matching |
+| UPI FISN | Product | e.g. `NA/CDS Corp SN Sr`, `NA/CDS Corp Basket`; `NA/CDS Corp SN` marks bond-referenced and short-dated contracts, `...Ph` physical settlement | | yes: only `CDS Corp SN Sr` prices |
 | Fixed rate-Leg 1 | Running coupon | decimal, 0.01 = 1% | blank on 301; `1` on 16 (see quirks) | yes: 0.5 or more is percent, divided by 100; kept only if 0 < C <= 10% |
 | Spread-Leg 1 | Quoted spread | decimal, 0.013 = 130 bp | blank on 869; `0` on 54 = not quoted | yes: decimals 0.001-0.5, or raw bp 5-20,000 read as bp; 10-5,000 bp kept |
-| Notional amount-Leg 1 | Size | currency units | capped sizes end in `+` | yes, for the upfront percentage |
+| Notional amount-Leg 1 | Size | currency units | capped sizes end in `+` | yes: under $1M prices nothing; also the base of the upfront percentage |
+| Notional currency-Leg 1, Other payment currency | Currencies | ISO code | a few CHF and EUR; `USD;USD` on rows with two payments | yes: USD only |
+| Package indicator, Non-standardized term indicator, Post-priced swap indicator | Flags | TRUE / FALSE, any case; blank on older files | 274 packages, 54 post-priced in a year (our names) | yes: any TRUE prices nothing |
 | Other payment amount | Upfront paid at the trade | currency units, **unsigned** | blank when there is no upfront | yes |
 | Other payment type | UFRO upfront, UWIN unwind | code | blank on 414 | yes: only UFRO amounts are read as upfronts |
 | Platform identifier | Venue code | e.g. BILT, TWSF, XXXX | | no |
@@ -36,13 +38,14 @@ Counts are from the 24 Nov 2026 end-of-day file: 1,225 records, 110 columns.
 ## Quirks
 1. **A blank upfront is not zero.** In JavaScript `Number('')` is 0, so a trade with neither a quoted spread nor an upfront priced at its coupon. See `findings/2026-11-26-blank-upfronts.md`. Fixed on aistress.si on 26 Nov 2026.
 2. **Some coupons are in percent.** Oracle records carry `Fixed rate-Leg 1 = 1` instead of `0.01` (95 in the last year). Until 26 Nov 2026 the harness read them as a 100% coupon and dropped the trade; now 0.5 or more is divided by 100. 48 Oracle and 9 Meta priced trades recovered (issue #7).
-3. **Upfronts carry no sign.** Both readings are computed and the one closer to the day's quoted median wins.
+3. **Upfronts carry no sign.** Both readings are computed. A reading under 10 bp on a 1% coupon or 100 bp on a 5% coupon is impossible, so the trade decides alone; otherwise the reading closer to the day's eligible quoted median (else the previous level) wins, and `n_sign_from_reference` counts it. `Price` is blank for our names, so no field carries the sign. See `findings/2026-11-28-cds-contract-checks.md`.
 4. **Capped notionals.** Large trades show the cap with a `+`; the true size is larger. The upfront amount appears to be reported on the capped size too: on days with both, capped and uncapped implied spreads differ by a median 0.5 bp (Oracle, 165 days). Counted per day as `n_capped`.
-8. **Unwinds are not upfronts.** `Other payment type = UWIN` is the payment to close a trade. 26 on-the-run Oracle records in the year; no longer read as prices.
-9. **Raw bp in the spread field.** Rare (1 Meta record in the year): a quoted spread of 435 means 435 bp.
-5. **One of two repositories.** ICE Trade Vault is the other SEC repository, so some trades never appear here.
-6. **Late reports.** Dealers may report up to 24 hours late; intraday files only hold what has been reported.
-7. **Lifecycle records are not prices.** MODI and TERM describe changes to existing trades.
+5. **Not every record is a price.** Of 3,374 on-the-run 5-year records for our three names in a year, 346 are packages, odd lots, novations, non-standard or post-priced trades, non-USD or not senior CDS. A cancellation (EROR) can arrive days later in another file: 99 trades behind past levels were cancelled that way. See `findings/2026-11-28-cds-contract-checks.md`.
+6. **Unwinds are not upfronts.** `Other payment type = UWIN` is the payment to close a trade. 26 on-the-run Oracle records in the year; no longer read as prices.
+7. **Raw bp in the spread field.** Rare (1 Meta record in the year): a quoted spread of 435 means 435 bp.
+8. **One of two repositories.** ICE Trade Vault is the other SEC repository, so some trades never appear here.
+9. **Late reports.** Dealers may report up to 24 hours late; intraday files only hold what has been reported.
+10. **Lifecycle records are not prices.** MODI and TERM describe changes to existing trades.
 
 ## Terms
 SEC rules require public dissemination free of charge. Open question: read DTCC's public price dissemination terms of use and record here exactly what they allow for storing and republishing.

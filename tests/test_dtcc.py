@@ -16,7 +16,9 @@ def row(**kw):
         'Execution Timestamp': f'{DAY}T15:00:00Z', 'Expiration Date': '2031-12-20',  # on-the-run 5Y after 20 Sep 2026
         'Underlying Asset Name': 'ORACLE CORPORATION', 'UPI Underlier Name': '', 'Underlier ID-Leg 1': '6EC42L',
         'Fixed rate-Leg 1': '0.01', 'Spread-Leg 1': '', 'Notional amount-Leg 1': '10000000', 'Other payment amount': '',
-        'Other payment type': 'UFRO',
+        'Other payment type': 'UFRO', 'Event type': 'TRAD', 'Notional currency-Leg 1': 'USD', 'Other payment currency': 'USD',
+        'UPI FISN': 'NA/CDS Corp SN Sr', 'Package indicator': 'FALSE', 'Non-standardized term indicator': 'FALSE',
+        'Post-priced swap indicator': 'false',
     }
     base.update(kw)
     return base
@@ -143,6 +145,127 @@ def test_neither_spread_nor_upfront_prices_nothing():
     assert level([row(), row(**{'Dissemination Identifier': '2', 'Other payment type': ''})], prev={'ORCL': 365.0}) is None
 
 
+# --- which trades may price a level (aistress.si/api/cds applies the same rules; parity in tests/test_site_parity.py) --
+
+CRWV = {'Underlying Asset Name': 'COREWEAVE, INC.', 'Underlier ID-Leg 1': '239FAV', 'Fixed rate-Leg 1': '0.05'}
+
+
+def crwv_level(rows, prev=None):
+    lv, _ = dtcc.parse_day(rows, DAY, prev or {})
+    return lv.get('CRWV')
+
+
+@pytest.mark.parametrize('field,value', [
+    ('Notional amount-Leg 1', '500,000'),                 # odd lot: under $1M prices nothing
+    ('Notional currency-Leg 1', 'EUR'),                   # USD trades only
+    ('Other payment currency', 'CHF'),
+    ('Event type', 'NOVA'),                               # a novation transfers an old trade; it is not a price
+    ('Package indicator', 'TRUE'),                        # one leg of a package is priced against the other legs
+    ('Non-standardized term indicator', 'TRUE'),
+    ('Post-priced swap indicator', 'true'),
+    ('UPI FISN', 'NA/CDS Corp SN'),                       # no seniority: bond-referenced and short-dated contracts
+    ('UPI FISN', 'NA/Cr Sw SN CDS Corp Ph'),              # physically settled
+])
+def test_only_standard_usd_senior_trades_of_1m_or_more_price(field, value):
+    assert level([row(**{'Spread-Leg 1': '0.0365'})]) is not None
+    assert level([row(**{'Spread-Leg 1': '0.0365', field: value})]) is None
+
+
+def test_blank_event_type_is_a_trade():
+    # Older DTCC files leave Event type blank; requiring TRAD dropped 94 of CoreWeave's 170 days.
+    assert level([row(**{'Spread-Leg 1': '0.0365', 'Event type': ''})])['official_bp'] == 365.0
+
+
+def test_one_dollar_quote_cannot_flip_the_sign():
+    # Attack found on 28 Nov 2026: a $1 quote at 50 bp was the day's reference, and the nearest reading of every
+    # CoreWeave upfront flipped to the wrong sign (1,373 bp read as 21 bp). An odd-lot quote is not eligible now.
+    up = dict(CRWV, **{'Dissemination Identifier': '2', 'Other payment amount': '2309720'})   # 23.1% on $10M
+    bad = dict(CRWV, **{'Dissemination Identifier': '3', 'Spread-Leg 1': '0.0050', 'Notional amount-Leg 1': '1'})
+    lv = crwv_level([row(**up), row(**bad)], prev={'CRWV': 1138.6})
+    assert lv['official_trades'] == 1 and 1300 < lv['official_bp'] < 1450
+
+
+def test_impossible_reading_loses_to_any_reference():
+    # On a 5% coupon a 23% upfront read the other way is a negative spread: the trade alone decides, so even a
+    # wrong reference (an eligible quote at 50 bp) cannot flip it.
+    up = dict(CRWV, **{'Dissemination Identifier': '2', 'Other payment amount': '2309720'})
+    bad = dict(CRWV, **{'Dissemination Identifier': '3', 'Spread-Leg 1': '0.0050'})
+    lv = crwv_level([row(**up), row(**bad)], prev={'CRWV': 1138.6})
+    assert lv['upfront_trades'] == 1 and lv['upfront_implied_bp'] > 1300
+
+
+def test_two_plausible_readings_take_the_one_nearer_the_reference():
+    # A 2.2% upfront on a 1% coupon reads about 150 bp or about 50 bp; both are possible, so the prior level decides.
+    rows = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '220000'})]
+    wide, tight = level(rows, prev={'ORCL': 150.0}), level(rows, prev={'ORCL': 60.0})
+    assert wide['official_bp'] > 130 and tight['official_bp'] < 70 and wide['n_sign_from_reference'] == 1
+
+
+def test_small_upfront_without_any_reference_is_dropped():
+    lv = level([row(**{'Dissemination Identifier': '2', 'Other payment amount': '50000'})])
+    assert lv is None
+
+
+def test_non_standard_coupon_upfront_is_not_converted():
+    assert level([row(**{'Dissemination Identifier': '2', 'Fixed rate-Leg 1': '0.03', 'Other payment amount': '1030000'})], prev={'ORCL': 365.0}) is None
+
+
+META = {'Underlying Asset Name': 'META PLATFORMS, INC.', 'Underlier ID-Leg 1': 'UZEAAG'}
+
+
+def test_basket_legs_sharing_one_upfront_across_names_do_not_price():
+    # 21 Sep 2026: Oracle and Meta legs with the same 1.9746% upfront, seconds apart, priced Oracle at 145 bp while its
+    # own trades said 205-208.
+    o = row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:00Z'})
+    m = row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:01:00Z'}))
+    real = row(**{'Dissemination Identifier': '4', 'Other payment amount': '465890'})
+    lv, _ = dtcc.parse_day([o, m, real], DAY, {'ORCL': 208.0, 'META': 90.0})
+    assert lv['ORCL']['official_trades'] == 1 and lv['ORCL']['n_basket_legs'] == 1 and 'META' not in lv
+
+
+def test_same_upfront_minutes_apart_or_on_one_name_is_not_a_basket():
+    apart = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460'}),
+             row(**dict(META, **{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:10:00Z'}))]
+    same = [row(**{'Dissemination Identifier': '2', 'Other payment amount': '197460'}),
+            row(**{'Dissemination Identifier': '3', 'Other payment amount': '197460', 'Execution Timestamp': f'{DAY}T15:00:30Z'})]
+    lv, _ = dtcc.parse_day(apart, DAY, {'ORCL': 150.0, 'META': 150.0})
+    assert lv['ORCL']['n_basket_legs'] == 0 and 'META' in lv
+    lv, _ = dtcc.parse_day(same, DAY, {'ORCL': 150.0})
+    assert lv['ORCL']['official_trades'] == 2
+
+
+def _file(day, rows):
+    return (day, dtcc.slim(rows))
+
+
+def test_cancellation_in_a_later_file_removes_the_trade():
+    # 4 CoreWeave trades at 860 bp on 29 Sep 2026 were cancelled in a later file; the old per-file cleaning kept them.
+    t = row(**{'Spread-Leg 1': '0.0365'})
+    cancel = row(**{'Action type': 'EROR', 'Dissemination Identifier': '9', 'Original Dissemination Identifier': '1',
+                    'Execution Timestamp': f'{DAY}T15:00:00Z'})
+    by_day = dtcc.ledger([_file(DAY, [t]), _file('2026-11-25', [cancel])])
+    assert not by_day.get(DAY)
+
+
+def test_correction_in_a_later_file_replaces_the_trade():
+    t = row(**{'Spread-Leg 1': '0.0300'})
+    fix = row(**{'Action type': 'CORR', 'Dissemination Identifier': '9', 'Original Dissemination Identifier': '1', 'Spread-Leg 1': '0.0365'})
+    by_day = dtcc.ledger([_file(DAY, [t]), _file('2026-11-25', [fix])])
+    lv, _ = dtcc.parse_day(by_day[DAY], DAY, {}, cleaned=True)
+    assert lv['ORCL']['official_bp'] == 365.0 and lv['ORCL']['official_trades'] == 1
+
+
+def test_late_report_is_priced_on_its_execution_day():
+    late = row(**{'Spread-Leg 1': '0.0365'})                     # executed 24 Nov, disseminated in the 25 Nov file
+    by_day = dtcc.ledger([_file('2026-11-25', [late])])
+    assert len(by_day[DAY]) == 1 and '2026-11-25' not in by_day
+
+
+def test_weekend_execution_is_not_a_trading_day():
+    t = row(**{'Spread-Leg 1': '0.0365', 'Execution Timestamp': '2026-11-28T15:00:00Z'})
+    assert dtcc.ledger([_file('2026-11-30', [t])]) == {}
+
+
 # --- downloads and provenance ----------------------------------------------------------------------------------------
 
 def make_zip(text='a,b\n1,2\n'):
@@ -231,7 +354,8 @@ def test_raw_files_match_the_committed_manifest():
 
 
 @needs_data
-@pytest.mark.parametrize('date,entity,bp', [('2026-11-24', 'ORCL', 364.5), ('2026-11-25', 'ORCL', 373.2), ('2026-11-24', 'CRWV', 1372.7)])
+@pytest.mark.parametrize('date,entity,bp', [('2026-11-24', 'ORCL', 364.5), ('2026-11-25', 'ORCL', 373.2), ('2026-11-24', 'CRWV', 1372.7),
+                                            ('2026-11-25', 'META', 124.2)])
 def test_levels_match_the_published_site(date, entity, bp):
     rows = {(r['date'], r['entity']): float(r['official_bp']) for r in csv.DictReader(open(CANON / 'cds_daily.csv'))}
     if (date, entity) not in rows:
@@ -247,7 +371,11 @@ def test_blank_upfront_days_never_show_the_old_reading(date, old_bug):
     rows = {r['date']: float(r['official_bp']) for r in csv.DictReader(open(CANON / 'cds_daily.csv')) if r['entity'] == 'ORCL'}
     if date not in rows:
         pytest.skip('date outside the built window')
-    assert abs(rows[date] - old_bug) > 1.0
+    trades = [r for r in csv.DictReader(open(CANON / 'cds_trades.csv')) if r['date'] == date and r['entity'] == 'ORCL']
+    assert trades and all(r['kind'] == 'quoted' or r['upfront_pct'] != '' for r in trades)  # nothing priced from a blank
+    # The level differs from the old reading too, except on 28 Oct 2026: with the $95k odd lot at 293 bp out (28 Nov),
+    # the correct median is 265.4, the old reading's value by coincidence.
+    assert abs(rows[date] - old_bug) > 1.0 or date == '2026-10-28'
 
 
 @needs_data
